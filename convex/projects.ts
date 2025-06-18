@@ -4,37 +4,74 @@ import { mutation, query } from "./_generated/server";
 // プロジェクト一覧取得
 export const getProjects = query({
   args: { userId: v.id("users") },
-  handler: async (ctx: any, args: any) => {
+  handler: async (ctx, args) => {
     return await ctx.db
       .query("projects")
-      .withIndex("by_user", (q: any) => q.eq("userId", args.userId))
-      .filter((q: any) => q.eq(q.field("isArchived"), false))
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .filter((q) => q.eq(q.field("isArchived"), false))
       .order("asc")
       .collect();
   },
 });
 
+export const getBySession = query({
+  args: { sessionId: v.id("mcpSessions") },
+  handler: async (ctx, args) => {
+    const session = await ctx.db.get(args.sessionId);
+    if (!session) return [];
+    
+    return await ctx.db
+      .query("projects")
+      .withIndex("by_user", (q) => q.eq("userId", session.userId))
+      .filter((q) => q.eq(q.field("isArchived"), false))
+      .order("asc")
+      .collect();
+  },
+});
+
+export const get = query({
+  args: { id: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.id as any);
+  },
+});
+
 // プロジェクト作成
-export const createProject = mutation({
+export const create = mutation({
   args: {
-    userId: v.id("users"),
+    sessionId: v.id("mcpSessions"),
     name: v.string(),
     color: v.optional(v.string()),
-    parentId: v.optional(v.id("projects")),
+    parent_id: v.optional(v.string()),
   },
-  handler: async (ctx: any, args: any) => {
-    const now = Date.now();
+  handler: async (ctx, args) => {
+    const session = await ctx.db.get(args.sessionId);
+    if (!session) {
+      throw new Error("Invalid session");
+    }
     
-    return await ctx.db.insert("projects", {
-      userId: args.userId,
+    let parentId = undefined;
+    if (args.parent_id) {
+      const parent = await ctx.db
+        .query("projects")
+        .withIndex("by_user", (q) => q.eq("userId", session.userId))
+        .filter((q) => q.eq(q.field("todoistId"), args.parent_id))
+        .first();
+      parentId = parent?._id;
+    }
+    
+    const projectId = await ctx.db.insert("projects", {
+      userId: session.userId,
       name: args.name,
-      color: args.color || "#808080",
-      parentId: args.parentId,
-      order: now,
+      color: args.color,
+      parentId,
+      order: Date.now(),
       isArchived: false,
-      createdAt: now,
-      updatedAt: now,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
     });
+    
+    return await ctx.db.get(projectId);
   },
 });
 
@@ -44,24 +81,29 @@ export const updateProject = mutation({
     id: v.id("projects"),
     name: v.optional(v.string()),
     color: v.optional(v.string()),
+    parentId: v.optional(v.id("projects")),
   },
-  handler: async (ctx: any, args: any) => {
+  handler: async (ctx, args) => {
     const { id, ...updates } = args;
     
-    return await ctx.db.patch(id, {
+    await ctx.db.patch(id, {
       ...updates,
       updatedAt: Date.now(),
     });
+    
+    return await ctx.db.get(id);
   },
 });
 
-// プロジェクト削除
-export const deleteProject = mutation({
+// プロジェクト削除（アーカイブ）
+export const archiveProject = mutation({
   args: { id: v.id("projects") },
-  handler: async (ctx: any, args: any) => {
-    return await ctx.db.patch(args.id, {
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.id, {
       isArchived: true,
       updatedAt: Date.now(),
     });
+    
+    return await ctx.db.get(args.id);
   },
 }); 

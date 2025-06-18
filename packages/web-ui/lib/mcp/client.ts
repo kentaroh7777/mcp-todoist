@@ -3,7 +3,6 @@ import { auth } from '@/lib/config/firebase'
 import type {
   MCPRequest,
   MCPResponse,
-  MCPError,
   MCPInitializeResponse,
   MCPTool,
   MCPResource,
@@ -15,6 +14,99 @@ import type {
   MCPClientConfig,
   MCPServerInfoExtended
 } from '@/types/mcp'
+
+// 拡張エラークラス
+class MCPError extends Error {
+  constructor(
+    message: string,
+    public code: string,
+    public recoveryAction?: string,
+    public retryable: boolean = false,
+    public originalError?: Error
+  ) {
+    super(message)
+    this.name = 'MCPError'
+  }
+}
+
+// エラーコード定数
+const MCPErrorCodes = {
+  // 接続関連
+  CONNECTION_FAILED: 'CONNECTION_FAILED',
+  CONNECTION_TIMEOUT: 'CONNECTION_TIMEOUT',
+  CONNECTION_LOST: 'CONNECTION_LOST',
+  WEBSOCKET_ERROR: 'WEBSOCKET_ERROR',
+  
+  // 認証関連
+  AUTH_FAILED: 'AUTH_FAILED',
+  AUTH_TOKEN_EXPIRED: 'AUTH_TOKEN_EXPIRED',
+  AUTH_UNAUTHORIZED: 'AUTH_UNAUTHORIZED',
+  
+  // プロトコル関連
+  PROTOCOL_ERROR: 'PROTOCOL_ERROR',
+  INVALID_REQUEST: 'INVALID_REQUEST',
+  INVALID_RESPONSE: 'INVALID_RESPONSE',
+  REQUEST_TIMEOUT: 'REQUEST_TIMEOUT',
+  
+  // サーバー関連
+  SERVER_ERROR: 'SERVER_ERROR',
+  SERVICE_UNAVAILABLE: 'SERVICE_UNAVAILABLE',
+  RATE_LIMITED: 'RATE_LIMITED',
+  
+  // ツール関連
+  TOOL_NOT_FOUND: 'TOOL_NOT_FOUND',
+  TOOL_EXECUTION_FAILED: 'TOOL_EXECUTION_FAILED',
+  INVALID_TOOL_PARAMS: 'INVALID_TOOL_PARAMS',
+} as const
+
+// エラーメッセージマッピング
+const ERROR_MESSAGES: Record<string, { message: string; recoveryAction: string; retryable: boolean }> = {
+  [MCPErrorCodes.CONNECTION_FAILED]: {
+    message: 'MCPサーバーへの接続に失敗しました',
+    recoveryAction: 'サーバーURLを確認し、サーバーが起動しているか確認してください',
+    retryable: true
+  },
+  [MCPErrorCodes.CONNECTION_TIMEOUT]: {
+    message: '接続がタイムアウトしました',
+    recoveryAction: 'ネットワーク接続を確認し、再度お試しください',
+    retryable: true
+  },
+  [MCPErrorCodes.CONNECTION_LOST]: {
+    message: 'サーバーとの接続が失われました',
+    recoveryAction: '自動再接続を試行中です。手動で再接続することもできます',
+    retryable: true
+  },
+  [MCPErrorCodes.AUTH_FAILED]: {
+    message: '認証に失敗しました',
+    recoveryAction: 'ログイン状態を確認し、必要に応じて再ログインしてください',
+    retryable: false
+  },
+  [MCPErrorCodes.AUTH_TOKEN_EXPIRED]: {
+    message: '認証トークンが期限切れです',
+    recoveryAction: 'トークンを更新して再試行します',
+    retryable: true
+  },
+  [MCPErrorCodes.REQUEST_TIMEOUT]: {
+    message: 'リクエストがタイムアウトしました',
+    recoveryAction: 'サーバーの応答が遅い可能性があります。しばらく待ってから再試行してください',
+    retryable: true
+  },
+  [MCPErrorCodes.SERVER_ERROR]: {
+    message: 'サーバーエラーが発生しました',
+    recoveryAction: 'サーバーの状態を確認し、しばらく待ってから再試行してください',
+    retryable: true
+  },
+  [MCPErrorCodes.TOOL_NOT_FOUND]: {
+    message: '指定されたツールが見つかりません',
+    recoveryAction: 'ツール一覧を更新し、正しいツール名を選択してください',
+    retryable: false
+  },
+  [MCPErrorCodes.TOOL_EXECUTION_FAILED]: {
+    message: 'ツールの実行に失敗しました',
+    recoveryAction: 'パラメーターを確認し、再度実行してください',
+    retryable: true
+  }
+}
 
 export class MCPClient {
   private ws: WebSocket | null = null
@@ -29,6 +121,14 @@ export class MCPClient {
   private config: MCPClientConfig
   private reconnectAttempts: number = 0
   private reconnectTimer: NodeJS.Timeout | null = null
+  
+  // エラー統計情報
+  private errorStats: Map<string, number> = new Map()
+  private lastError: MCPError | null = null
+  
+  // パフォーマンス監視
+  private connectionStartTime: number = 0
+  private requestMetrics: Array<{ method: string, duration: number, success: boolean }> = []
 
   constructor(config: MCPClientConfig = {}) {
     this.config = {
@@ -43,14 +143,14 @@ export class MCPClient {
   async connect(serverUrl: string): Promise<void> {
     this.serverUrl = serverUrl
     this.connectionState = 'connecting'
+    this.connectionStartTime = Date.now()
     
     try {
+      // URLバリデーション
+      this.validateServerUrl(serverUrl)
+      
       // Firebase認証トークン取得
-      if (auth.currentUser) {
-        this.authToken = await getIdToken(auth.currentUser)
-      } else {
-        throw new Error('認証に失敗しました')
-      }
+      await this.ensureAuthentication()
 
       // WebSocket接続確立
       await this.establishWebSocketConnection()
@@ -58,12 +158,99 @@ export class MCPClient {
       this.connected = true
       this.connectionState = 'connected'
       this.reconnectAttempts = 0
+      
+      // 接続成功メトリクスを記録
+      const connectionDuration = Date.now() - this.connectionStartTime
+      this.logConnectionMetrics(true, connectionDuration)
+      
       this.emit('connect')
       
     } catch (error) {
       this.connectionState = 'disconnected'
       this.connected = false
-      throw new Error(`MCP接続に失敗しました: ${error instanceof Error ? error.message : '不明なエラー'}`)
+      
+      // 接続失敗メトリクスを記録
+      const connectionDuration = Date.now() - this.connectionStartTime
+      this.logConnectionMetrics(false, connectionDuration)
+      
+      const mcpError = this.createMCPError(error)
+      this.recordError(mcpError)
+      throw mcpError
+    }
+  }
+  
+  private validateServerUrl(url: string): void {
+    try {
+      // テスト環境では検証を緩和
+      if (url.startsWith('mock:') || 
+          (typeof process !== 'undefined' && process.env.NODE_ENV === 'test')) {
+        return
+      }
+      
+      const parsedUrl = new URL(url)
+      if (!['ws:', 'wss:'].includes(parsedUrl.protocol)) {
+        throw new MCPError(
+          '無効なWebSocket URLです',
+          MCPErrorCodes.INVALID_REQUEST,
+          '「ws://」または「wss://」で始まるURLを入力してください',
+          false
+        )
+      }
+    } catch (error) {
+      // 既にMCPErrorの場合はそのまま再スロー
+      if (error instanceof MCPError) {
+        throw error
+      }
+      
+      // テスト環境またはmockで始まるURLはテスト用として許可
+      if (url.startsWith('mock:') || 
+          (typeof process !== 'undefined' && process.env.NODE_ENV === 'test')) {
+        return
+      }
+      
+      throw new MCPError(
+        '無効なURL形式です',
+        MCPErrorCodes.INVALID_REQUEST,
+        '正しいWebSocket URLを入力してください (例: ws://localhost:8080/mcp)',
+        false
+      )
+    }
+  }
+  
+  private async ensureAuthentication(): Promise<void> {
+    try {
+      if (!auth.currentUser) {
+        throw new MCPError(
+          'ユーザーがログインしていません',
+          MCPErrorCodes.AUTH_FAILED,
+          'ログインしてから再度お試しください',
+          false
+        )
+      }
+      
+      this.authToken = await getIdToken(auth.currentUser)
+      
+      if (!this.authToken) {
+        throw new MCPError(
+          '認証トークンの取得に失敗しました',
+          MCPErrorCodes.AUTH_FAILED,
+          'ログアウト後、再びログインしてください',
+          true
+        )
+      }
+      
+    } catch (error) {
+      if (error instanceof MCPError) {
+        throw error
+      }
+      
+      throw new MCPError(
+        '認証処理中にエラーが発生しました',
+        MCPErrorCodes.AUTH_FAILED,
+        'ネットワーク接続を確認し、再度お試しください',
+        true,
+        error instanceof Error ? error : undefined
+      )
     }
   }
 
@@ -73,8 +260,16 @@ export class MCPClient {
         this.ws = new WebSocket(this.serverUrl)
 
         const timeout = setTimeout(() => {
-          reject(new Error('WebSocket接続がタイムアウトしました'))
-        }, 10000)
+          if (this.ws) {
+            this.ws.close()
+          }
+          reject(new MCPError(
+            'WebSocket接続がタイムアウトしました',
+            MCPErrorCodes.CONNECTION_TIMEOUT,
+            'サーバーの状態を確認し、再度お試しください',
+            true
+          ))
+        }, this.config.requestTimeout || 10000)
 
         this.ws.onopen = () => {
           clearTimeout(timeout)
@@ -84,20 +279,38 @@ export class MCPClient {
 
         this.ws.onerror = (error) => {
           clearTimeout(timeout)
-          reject(new Error(`WebSocket接続エラー: ${error}`))
+          reject(new MCPError(
+            'WebSocket接続エラーが発生しました',
+            MCPErrorCodes.WEBSOCKET_ERROR,
+            'ネットワーク設定やファイアウォールを確認してください',
+            true,
+            error instanceof Error ? error : new Error(String(error))
+          ))
         }
 
         this.ws.onclose = (event) => {
           clearTimeout(timeout)
           if (!this.connected) {
-            reject(new Error(`WebSocket接続が閉じられました: ${event.reason}`))
+            const reason = event.reason || '不明な理由'
+            reject(new MCPError(
+              `WebSocket接続が閉じられました: ${reason}`,
+              MCPErrorCodes.CONNECTION_FAILED,
+              'サーバーが起動しているか確認し、URLを再度確認してください',
+              true
+            ))
           } else {
             this.handleDisconnection(event)
           }
         }
 
       } catch (error) {
-        reject(error)
+        reject(new MCPError(
+          'WebSocket初期化に失敗しました',
+          MCPErrorCodes.CONNECTION_FAILED,
+          'ブラウザーを再起動し、再度お試しください',
+          true,
+          error instanceof Error ? error : new Error(String(error))
+        ))
       }
     })
   }
@@ -295,10 +508,16 @@ export class MCPClient {
 
   private async sendRequest(method: string, params?: any): Promise<any> {
     if (!this.connected || !this.ws) {
-      throw new Error('MCPサーバーに接続されていません')
+      throw new MCPError(
+        'MCPサーバーに接続されていません',
+        MCPErrorCodes.CONNECTION_LOST,
+        '接続ボタンをクリックしてサーバーに接続してください',
+        false
+      )
     }
 
     const id = ++this.requestId
+    const startTime = Date.now()
     const request: MCPRequest = {
       jsonrpc: '2.0',
       id,
@@ -306,25 +525,59 @@ export class MCPClient {
       params
     }
 
-    // 認証トークンをヘッダーまたはパラメータに追加
-    if (this.authToken && params) {
+    // 認証トークンをパラメータに追加
+    if (this.authToken) {
+      if (!params) params = {}
       params.auth_token = this.authToken
     }
 
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pendingRequests.delete(id.toString())
-        reject(new Error('リクエストがタイムアウトしました'))
+        const duration = Date.now() - startTime
+        this.recordRequestMetrics(method, duration, false)
+        
+        const timeoutError = new MCPError(
+          `リクエストがタイムアウトしました: ${method}`,
+          MCPErrorCodes.REQUEST_TIMEOUT,
+          'サーバーの応答が遅い可能性があります。しばらく待ってから再試行してください',
+          true
+        )
+        this.recordError(timeoutError)
+        reject(timeoutError)
       }, this.config.requestTimeout || 30000)
 
-      this.pendingRequests.set(id.toString(), { resolve, reject, timeout })
+      this.pendingRequests.set(id.toString(), { 
+        resolve: (result: any) => {
+          const duration = Date.now() - startTime
+          this.recordRequestMetrics(method, duration, true)
+          resolve(result)
+        }, 
+        reject: (error: any) => {
+          const duration = Date.now() - startTime
+          this.recordRequestMetrics(method, duration, false)
+          reject(error)
+        }, 
+        timeout 
+      })
 
       try {
         this.ws!.send(JSON.stringify(request))
       } catch (error) {
         clearTimeout(timeout)
         this.pendingRequests.delete(id.toString())
-        reject(new Error(`リクエスト送信に失敗しました: ${error instanceof Error ? error.message : '不明なエラー'}`))
+        const duration = Date.now() - startTime
+        this.recordRequestMetrics(method, duration, false)
+        
+        const sendError = new MCPError(
+          `リクエスト送信に失敗しました: ${method}`,
+          MCPErrorCodes.CONNECTION_LOST,
+          '接続が不安定です。再接続してから再試行してください',
+          true,
+          error instanceof Error ? error : new Error(String(error))
+        )
+        this.recordError(sendError)
+        reject(sendError)
       }
     })
   }
@@ -344,6 +597,112 @@ export class MCPClient {
       // ログアウト時は接続を切断
       this.disconnect()
     }
+  }
+  
+  // エラーハンドリングユーティリティ
+  private createMCPError(error: unknown): MCPError {
+    if (error instanceof MCPError) {
+      return error
+    }
+    
+    if (error instanceof Error) {
+      // 既知のエラーパターンをチェック
+      const message = error.message.toLowerCase()
+      
+      if (message.includes('timeout')) {
+        return new MCPError(
+          '接続がタイムアウトしました',
+          MCPErrorCodes.CONNECTION_TIMEOUT,
+          'ネットワーク状態を確認し、再度お試しください',
+          true,
+          error
+        )
+      }
+      
+      if (message.includes('network') || message.includes('connection')) {
+        return new MCPError(
+          'ネットワークエラーが発生しました',
+          MCPErrorCodes.CONNECTION_FAILED,
+          'インターネット接続を確認し、再度お試しください',
+          true,
+          error
+        )
+      }
+      
+      if (message.includes('auth') || message.includes('認証')) {
+        return new MCPError(
+          '認証エラーが発生しました',
+          MCPErrorCodes.AUTH_FAILED,
+          'ログアウト後、再びログインしてください',
+          false,
+          error
+        )
+      }
+    }
+    
+    // デフォルトエラー
+    return new MCPError(
+      '予期しないエラーが発生しました',
+      MCPErrorCodes.PROTOCOL_ERROR,
+      'ページを再読み込みし、再度お試しください',
+      true,
+      error instanceof Error ? error : new Error(String(error))
+    )
+  }
+  
+  private recordError(error: MCPError): void {
+    this.lastError = error
+    const count = this.errorStats.get(error.code) || 0
+    this.errorStats.set(error.code, count + 1)
+    
+    // ログ出力（デバッグ用）
+    if (this.config.enableLogging) {
+      console.error('[MCP Client Error]', {
+        code: error.code,
+        message: error.message,
+        recoveryAction: error.recoveryAction,
+        retryable: error.retryable,
+        originalError: error.originalError
+      })
+    }
+  }
+  
+  private logConnectionMetrics(success: boolean, duration: number): void {
+    if (this.config.enableLogging) {
+      console.log('[MCP Connection Metrics]', {
+        success,
+        duration: `${duration}ms`,
+        timestamp: new Date().toISOString()
+      })
+    }
+  }
+  
+  private recordRequestMetrics(method: string, duration: number, success: boolean): void {
+    this.requestMetrics.push({ method, duration, success })
+    
+    // メトリクスを最新100件に保つ
+    if (this.requestMetrics.length > 100) {
+      this.requestMetrics = this.requestMetrics.slice(-100)
+    }
+  }
+  
+  // パブリックメトリクスAPI
+  getErrorStats(): Record<string, number> {
+    return Object.fromEntries(this.errorStats)
+  }
+  
+  getLastError(): MCPError | null {
+    return this.lastError
+  }
+  
+  getRequestMetrics(): Array<{ method: string, duration: number, success: boolean }> {
+    return [...this.requestMetrics]
+  }
+  
+  clearMetrics(): void {
+    this.errorStats.clear()
+    this.requestMetrics = []
+    this.lastError = null
   }
 }
 

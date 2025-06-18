@@ -10,6 +10,20 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_email", ["email"]),
 
+  mcpSessions: defineTable({
+    userId: v.id("users"),
+    clientInfo: v.object({
+      name: v.string(),
+      version: v.string(),
+    }),
+    protocolVersion: v.string(),
+    connected: v.boolean(),
+    createdAt: v.number(),
+    lastActivity: v.number(),
+    disconnectedAt: v.optional(v.number()),
+  }).index("by_user", ["userId"])
+    .index("by_connected", ["connected"]),
+
   projects: defineTable({
     userId: v.id("users"),
     todoistId: v.optional(v.string()),

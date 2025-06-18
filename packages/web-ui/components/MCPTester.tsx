@@ -16,7 +16,16 @@ import {
   List,
   Spin,
   Pagination,
-  Modal
+  Modal,
+  Progress,
+  Alert,
+  Tooltip,
+  notification,
+  Drawer,
+  Row,
+  Col,
+  Affix,
+  FloatButton
 } from 'antd'
 import {
   PlayCircleOutlined,
@@ -24,7 +33,16 @@ import {
   ConnectOutlined,
   ClearOutlined,
   DownloadOutlined,
-  ReloadOutlined
+  ReloadOutlined,
+  InfoCircleOutlined,
+  WarningOutlined,
+  CheckCircleOutlined,
+  ExclamationCircleOutlined,
+  MenuOutlined,
+  FullscreenOutlined,
+  KeyboardOutlined,
+  EyeOutlined,
+  SettingOutlined
 } from '@ant-design/icons'
 import type {
   MCPTool,
@@ -64,6 +82,16 @@ export function MCPTester({ initialServerUrl, onConnectionChange }: MCPTesterPro
   const [toolResult, setToolResult] = useState<any>()
   const [resourceContent, setResourceContent] = useState<MCPResourceContent>()
   const [promptResult, setPromptResult] = useState<MCPPromptContent>()
+  
+  // UX拡張State
+  const [activeTab, setActiveTab] = useState('connection')
+  const [drawerVisible, setDrawerVisible] = useState(false)
+  const [fullscreenMode, setFullscreenMode] = useState(false)
+  const [connectionProgress, setConnectionProgress] = useState(0)
+  const [operationProgress, setOperationProgress] = useState(0)
+  const [showKeyboardHelp, setShowKeyboardHelp] = useState(false)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [errorDetails, setErrorDetails] = useState<{ code?: string; recoveryAction?: string }>({})
   
   // Forms
   const [toolForm] = Form.useForm()
@@ -150,27 +178,82 @@ export function MCPTester({ initialServerUrl, onConnectionChange }: MCPTesterPro
   const handleConnect = async () => {
     if (!mcpClient.current) return
     if (!serverUrl.trim()) {
-      message.error('サーバーURLを入力してください')
+      notification.error({
+        message: '入力エラー',
+        description: 'サーバーURLを入力してください',
+        placement: 'topRight'
+      })
       return
     }
 
-    // URL validation
+    // URL validation with better feedback
     try {
-      new URL(serverUrl)
+      const url = new URL(serverUrl)
+      if (!['ws:', 'wss:'].includes(url.protocol)) {
+        setError('WebSocket URL（ws://またはwss://）を入力してください')
+        setErrorDetails({ 
+          code: 'INVALID_PROTOCOL',
+          recoveryAction: 'URLをws://localhost:8080/mcpのような形式で入力してください'
+        })
+        return
+      }
     } catch {
       setError('有効なWebSocket URLを入力してください')
+      setErrorDetails({ 
+        code: 'INVALID_URL',
+        recoveryAction: 'URLの形式を確認してください（例: ws://localhost:8080/mcp）'
+      })
       return
     }
 
     setLoading(true)
+    setIsProcessing(true)
     setError(undefined)
+    setErrorDetails({})
+    setConnectionProgress(0)
+    
+    // Progress simulation for better UX
+    const progressInterval = setInterval(() => {
+      setConnectionProgress(prev => {
+        if (prev >= 90) {
+          clearInterval(progressInterval)
+          return 90
+        }
+        return prev + 10
+      })
+    }, 200)
     
     try {
       await mcpClient.current.connect(serverUrl)
-    } catch (error) {
-      setError(error instanceof Error ? error.message : '接続に失敗しました')
+      setConnectionProgress(100)
+      notification.success({
+        message: '接続成功',
+        description: `${serverUrl} に正常に接続しました`,
+        placement: 'topRight',
+        duration: 3
+      })
+    } catch (error: any) {
+      clearInterval(progressInterval)
+      setConnectionProgress(0)
+      
+      // Enhanced error handling with recovery suggestions
+      const errorMessage = error?.message || '接続に失敗しました'
+      const errorCode = error?.code || 'UNKNOWN_ERROR'
+      const recoveryAction = error?.recoveryAction || '再度お試しください'
+      
+      setError(errorMessage)
+      setErrorDetails({ code: errorCode, recoveryAction })
+      
+      notification.error({
+        message: '接続エラー',
+        description: errorMessage,
+        placement: 'topRight',
+        duration: 5
+      })
     } finally {
       setLoading(false)
+      setIsProcessing(false)
+      clearInterval(progressInterval)
     }
   }
 
@@ -344,77 +427,416 @@ export function MCPTester({ initialServerUrl, onConnectionChange }: MCPTesterPro
     }
   }
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Ctrl+Enter: Execute current tool/prompt
+      if (event.ctrlKey && event.key === 'Enter') {
+        event.preventDefault()
+        if (activeTab === 'tools' && selectedTool) {
+          handleToolExecute()
+        } else if (activeTab === 'prompts' && selectedPrompt) {
+          handlePromptExecute()
+        }
+      }
+      
+      // Ctrl+Shift+C: Connect/Disconnect
+      if (event.ctrlKey && event.shiftKey && event.key === 'C') {
+        event.preventDefault()
+        if (connected) {
+          handleDisconnect()
+        } else {
+          handleConnect()
+        }
+      }
+      
+      // F1: Show keyboard help
+      if (event.key === 'F1') {
+        event.preventDefault()
+        setShowKeyboardHelp(true)
+      }
+      
+      // Escape: Close modals/drawer
+      if (event.key === 'Escape') {
+        setDrawerVisible(false)
+        setShowKeyboardHelp(false)
+        setFullscreenMode(false)
+      }
+    }
+    
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [activeTab, selectedTool, selectedPrompt, connected])
+  
+  // Responsive breakpoint detection
+  const [screenSize, setScreenSize] = useState<'mobile' | 'tablet' | 'desktop'>('desktop')
+  
+  useEffect(() => {
+    const checkScreenSize = () => {
+      const width = window.innerWidth
+      if (width < 768) {
+        setScreenSize('mobile')
+      } else if (width < 1200) {
+        setScreenSize('tablet')
+      } else {
+        setScreenSize('desktop')
+      }
+    }
+    
+    checkScreenSize()
+    window.addEventListener('resize', checkScreenSize)
+    return () => window.removeEventListener('resize', checkScreenSize)
+  }, [])
+
   if (!user) {
     return (
-      <div data-testid="signin-required">
-        <Card>
-          <div style={{ textAlign: 'center', padding: '40px 0' }}>
+      <div data-testid="signin-required" className="signin-required">
+        <Card 
+          style={{ 
+            maxWidth: 500, 
+            margin: '40px auto',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+          }}
+        >
+          <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+            <ExclamationCircleOutlined 
+              style={{ fontSize: 48, color: '#faad14', marginBottom: 16 }} 
+            />
             <Title level={3}>サインインが必要です</Title>
-            <Paragraph>MCP テスターを使用するにはサインインしてください。</Paragraph>
+            <Paragraph type="secondary">
+              MCP テスターを使用するにはサインインしてください。
+            </Paragraph>
+            <Button type="primary" size="large" style={{ marginTop: 16 }}>
+              サインインページへ
+            </Button>
           </div>
         </Card>
       </div>
     )
   }
 
-  return (
-    <div data-testid="mcp-tester" style={{ padding: '24px' }}>
-      <Title level={2}>MCP テスター</Title>
-      
-      {error && (
-        <Card style={{ marginBottom: 16, borderColor: '#ff4d4f' }}>
-          <Text type="danger">{error}</Text>
-        </Card>
-      )}
-
-      <Tabs defaultActiveKey="connection">
-        {/* 接続セクション */}
-        <Tabs.TabPane tab="接続" key="connection">
-          <Card title="サーバー接続" data-testid="connection-section">
-            <Space direction="vertical" style={{ width: '100%' }}>
-              <div>
-                <Text strong>接続状態: </Text>
-                {getConnectionStatusBadge()}
+  const renderKeyboardHelp = () => (
+    <Modal
+      title="キーボードショートカット"
+      open={showKeyboardHelp}
+      onCancel={() => setShowKeyboardHelp(false)}
+      footer={[
+        <Button key="close" onClick={() => setShowKeyboardHelp(false)}>
+          閉じる
+        </Button>
+      ]}
+    >
+      <List
+        size="small"
+        dataSource={[
+          { key: 'Ctrl + Enter', description: '現在のツール/プロンプトを実行' },
+          { key: 'Ctrl + Shift + C', description: '接続/切断の切り替え' },
+          { key: 'F1', description: 'キーボードヘルプを表示' },
+          { key: 'Escape', description: 'モーダルやドロワーを閉じる' }
+        ]}
+        renderItem={item => (
+          <List.Item>
+            <List.Item.Meta
+              title={<code style={{ background: '#f5f5f5', padding: '2px 6px', borderRadius: 4 }}>{item.key}</code>}
+              description={item.description}
+            />
+          </List.Item>
+        )}
+      />
+    </Modal>
+  )
+  
+  const renderErrorAlert = () => {
+    if (!error) return null
+    
+    return (
+      <Alert
+        message="エラーが発生しました"
+        description={
+          <div>
+            <div style={{ marginBottom: 8 }}>{error}</div>
+            {errorDetails.recoveryAction && (
+              <div style={{ fontSize: 12, color: '#666' }}>
+                <InfoCircleOutlined style={{ marginRight: 4 }} />
+                対処方法: {errorDetails.recoveryAction}
               </div>
-              
-              <Input
-                value={serverUrl}
-                onChange={(e) => setServerUrl(e.target.value)}
-                placeholder="ws://localhost:8080/mcp"
-                data-testid="server-url-input"
-                disabled={connected}
+            )}
+            {errorDetails.code && (
+              <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
+                エラーコード: {errorDetails.code}
+              </div>
+            )}
+          </div>
+        }
+        type="error"
+        showIcon
+        closable
+        onClose={() => {
+          setError(undefined)
+          setErrorDetails({})
+        }}
+        style={{ marginBottom: 16 }}
+        action={
+          errorDetails.recoveryAction && (
+            <Button size="small" onClick={() => {
+              if (errorDetails.code?.includes('CONNECTION') || errorDetails.code?.includes('URL')) {
+                // Focus on server URL input
+                const urlInput = document.querySelector('[data-testid="server-url-input"]') as HTMLInputElement
+                urlInput?.focus()
+              }
+            }}>
+              修正する
+            </Button>
+          )
+        }
+      />
+    )
+  }
+  
+  const containerStyle = {
+    padding: screenSize === 'mobile' ? '12px' : '24px',
+    maxWidth: fullscreenMode ? '100%' : '1400px',
+    margin: '0 auto',
+    minHeight: fullscreenMode ? '100vh' : 'auto'
+  }
+  
+  const tabBarStyle = {
+    position: screenSize === 'mobile' ? 'sticky' as const : 'static' as const,
+    top: screenSize === 'mobile' ? 0 : 'auto',
+    zIndex: screenSize === 'mobile' ? 100 : 'auto',
+    background: '#fff',
+    borderBottom: screenSize === 'mobile' ? '1px solid #f0f0f0' : 'none'
+  }
+
+  return (
+    <div data-testid="mcp-tester" style={containerStyle}>
+      {/* Header with responsive design */}
+      <Row align="middle" justify="space-between" style={{ marginBottom: 24 }}>
+        <Col>
+          <Title level={screenSize === 'mobile' ? 3 : 2} style={{ margin: 0 }}>
+            MCP テスター
+            {connected && (
+              <Badge 
+                status="success" 
+                text="接続中" 
+                style={{ marginLeft: 12, fontSize: 12 }}
               />
+            )}
+          </Title>
+        </Col>
+        <Col>
+          <Space>
+            {screenSize === 'mobile' && (
+              <Button 
+                icon={<MenuOutlined />} 
+                onClick={() => setDrawerVisible(true)}
+                aria-label="メニューを開く"
+              />
+            )}
+            <Tooltip title="キーボードショートカット (F1)">
+              <Button 
+                icon={<KeyboardOutlined />} 
+                onClick={() => setShowKeyboardHelp(true)}
+                aria-label="キーボードショートカットを表示"
+              />
+            </Tooltip>
+            <Tooltip title={fullscreenMode ? "通常表示" : "フルスクリーン"}>
+              <Button 
+                icon={<FullscreenOutlined />} 
+                onClick={() => setFullscreenMode(!fullscreenMode)}
+                aria-label={fullscreenMode ? "通常表示" : "フルスクリーン"}
+              />
+            </Tooltip>
+          </Space>
+        </Col>
+      </Row>
+      
+      {/* Connection progress indicator */}
+      {isProcessing && (
+        <div style={{ marginBottom: 16 }}>
+          <Progress 
+            percent={connectionProgress} 
+            status={connectionProgress === 100 ? 'success' : 'active'}
+            strokeColor={{
+              '0%': '#108ee9',
+              '100%': '#87d068',
+            }}
+            format={(percent) => `接続中... ${percent}%`}
+          />
+        </div>
+      )}
+      
+      {renderErrorAlert()}
+
+      {/* Mobile drawer for menu */}
+      <Drawer
+        title="MCP テスターメニュー"
+        placement="left"
+        onClose={() => setDrawerVisible(false)}
+        open={drawerVisible}
+        width={280}
+      >
+        <List
+          dataSource={[
+            { key: 'connection', icon: <ConnectOutlined />, title: '接続設定' },
+            { key: 'tools', icon: <PlayCircleOutlined />, title: 'ツール実行' },
+            { key: 'resources', icon: <EyeOutlined />, title: 'リソース管理' },
+            { key: 'prompts', icon: <SettingOutlined />, title: 'プロンプト管理' },
+            { key: 'debug', icon: <InfoCircleOutlined />, title: 'デバッグログ' }
+          ]}
+          renderItem={item => (
+            <List.Item
+              style={{ 
+                cursor: 'pointer',
+                background: activeTab === item.key ? '#e6f7ff' : 'transparent',
+                borderRadius: 4,
+                margin: '4px 0'
+              }}
+              onClick={() => {
+                setActiveTab(item.key)
+                setDrawerVisible(false)
+              }}
+            >
+              <List.Item.Meta
+                avatar={item.icon}
+                title={item.title}
+              />
+            </List.Item>
+          )}
+        />
+      </Drawer>
+
+      <Tabs 
+        activeKey={activeTab}
+        onChange={setActiveTab}
+        size={screenSize === 'mobile' ? 'small' : 'default'}
+        tabBarStyle={tabBarStyle}
+        tabPosition={screenSize === 'mobile' ? 'top' : 'top'}
+      >
+        {/* 接続セクション - Enhanced with responsive design */}
+        <Tabs.TabPane 
+          tab={
+            <span>
+              <ConnectOutlined />
+              {screenSize !== 'mobile' && ' 接続'}
+            </span>
+          } 
+          key="connection"
+        >
+          <Card 
+            title="サーバー接続" 
+            data-testid="connection-section"
+            size={screenSize === 'mobile' ? 'small' : 'default'}
+            extra={
+              <Tooltip title="接続状態">
+                {getConnectionStatusBadge()}
+              </Tooltip>
+            }
+          >
+            <Space direction="vertical" style={{ width: '100%' }} size="large">
+              <Row gutter={[16, 16]}>
+                <Col xs={24} sm={24} md={16} lg={18}>
+                  <Form.Item 
+                    label="サーバーURL" 
+                    help="WebSocket URL (ws:// または wss://)"
+                    validateStatus={error && errorDetails.code?.includes('URL') ? 'error' : ''}
+                  >
+                    <Input
+                      value={serverUrl}
+                      onChange={(e) => setServerUrl(e.target.value)}
+                      placeholder="ws://localhost:8080/mcp"
+                      data-testid="server-url-input"
+                      disabled={connected}
+                      size={screenSize === 'mobile' ? 'large' : 'middle'}
+                      aria-label="MCPサーバーURLを入力"
+                      addonBefore={
+                        <Tooltip title="WebSocketプロトコル">
+                          <span style={{ color: '#666' }}>WS</span>
+                        </Tooltip>
+                      }
+                      onPressEnter={!connected ? handleConnect : undefined}
+                    />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} sm={24} md={8} lg={6}>
+                  <Form.Item label={screenSize === 'mobile' ? '' : ' '}>
+                    <Space size="small" style={{ width: '100%' }}>
+                      {!connected ? (
+                        <Button
+                          type="primary"
+                          icon={<ConnectOutlined />}
+                          loading={loading}
+                          onClick={handleConnect}
+                          data-testid="connect-button"
+                          size={screenSize === 'mobile' ? 'large' : 'middle'}
+                          block={screenSize === 'mobile'}
+                          aria-label="MCPサーバーに接続"
+                        >
+                          {screenSize === 'mobile' ? '接続する' : '接続'}
+                        </Button>
+                      ) : (
+                        <Button
+                          danger
+                          icon={<DisconnectOutlined />}
+                          onClick={handleDisconnect}
+                          data-testid="disconnect-button"
+                          size={screenSize === 'mobile' ? 'large' : 'middle'}
+                          block={screenSize === 'mobile'}
+                          aria-label="MCPサーバーから切断"
+                        >
+                          {screenSize === 'mobile' ? '切断する' : '切断'}
+                        </Button>
+                      )}
+                      
+                      <Tooltip title="ツール、リソース、プロンプトを更新">
+                        <Button
+                          icon={<ReloadOutlined />}
+                          onClick={loadInitialData}
+                          disabled={!connected}
+                          loading={loading}
+                          size={screenSize === 'mobile' ? 'large' : 'middle'}
+                          aria-label="データを更新"
+                        >
+                          {screenSize !== 'mobile' && '更新'}
+                        </Button>
+                      </Tooltip>
+                    </Space>
+                  </Form.Item>
+                </Col>
+              </Row>
               
-              <Space>
-                {!connected ? (
-                  <Button
-                    type="primary"
-                    icon={<ConnectOutlined />}
-                    loading={loading}
-                    onClick={handleConnect}
-                    data-testid="connect-button"
-                  >
-                    接続
-                  </Button>
-                ) : (
-                  <Button
-                    icon={<DisconnectOutlined />}
-                    onClick={handleDisconnect}
-                    data-testid="disconnect-button"
-                  >
-                    切断
-                  </Button>
-                )}
-                
-                <Button
-                  icon={<ReloadOutlined />}
-                  onClick={loadInitialData}
-                  disabled={!connected}
-                  loading={loading}
-                >
-                  更新
-                </Button>
-              </Space>
+              {/* Connection statistics (if connected) */}
+              {connected && mcpClient.current && (
+                <Row gutter={[16, 16]}>
+                  <Col xs={24} sm={12} md={8}>
+                    <Card size="small" title="接続情報">
+                      <Descriptions size="small" column={1}>
+                        <Descriptions.Item label="サーバーURL">
+                          <Text ellipsis style={{ maxWidth: 200 }}>{serverUrl}</Text>
+                        </Descriptions.Item>
+                        <Descriptions.Item label="状態">
+                          {getConnectionStatusBadge()}
+                        </Descriptions.Item>
+                      </Descriptions>
+                    </Card>
+                  </Col>
+                  <Col xs={24} sm={12} md={8}>
+                    <Card size="small" title="統計">
+                      <Descriptions size="small" column={1}>
+                        <Descriptions.Item label="ツール">
+                          <Badge count={tools.length} showZero style={{ backgroundColor: '#52c41a' }} />
+                        </Descriptions.Item>
+                        <Descriptions.Item label="リソース">
+                          <Badge count={resources.length} showZero style={{ backgroundColor: '#1890ff' }} />
+                        </Descriptions.Item>
+                        <Descriptions.Item label="プロンプト">
+                          <Badge count={prompts.length} showZero style={{ backgroundColor: '#722ed1' }} />
+                        </Descriptions.Item>
+                      </Descriptions>
+                    </Card>
+                  </Col>
+                </Row>
+              )}
             </Space>
           </Card>
         </Tabs.TabPane>

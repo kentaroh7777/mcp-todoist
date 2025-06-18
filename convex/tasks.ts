@@ -1,3 +1,6 @@
+import { v } from "convex/values";
+import { mutation, query } from "./_generated/server";
+
 // Convex関数の型定義（型エラー回避）
 type ConvexValue = any;
 type ConvexContext = any;
@@ -15,94 +18,272 @@ const v = {
 const query = (config: any) => config;
 const mutation = (config: any) => config;
 
-// タスク一覧取得
-export const getTasks = query({
-  args: { userId: v.id("users"), projectId: v.optional(v.id("projects")) },
+// Basic task queries
+export const getByUser = query({
+  args: { userId: v.id("users") },
   handler: async (ctx, args) => {
-    const query = ctx.db
+    return await ctx.db
       .query("tasks")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId));
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .filter((q) => q.eq(q.field("isCompleted"), false))
+      .order("desc")
+      .collect();
+  },
+});
+
+export const getBySession = query({
+  args: { sessionId: v.id("mcpSessions") },
+  handler: async (ctx, args) => {
+    const session = await ctx.db.get(args.sessionId);
+    if (!session) return [];
     
-    if (args.projectId) {
-      return await query
-        .filter((q) => q.eq(q.field("projectId"), args.projectId))
-        .order("desc")
-        .collect();
+    return await ctx.db
+      .query("tasks")
+      .withIndex("by_user", (q) => q.eq("userId", session.userId))
+      .filter((q) => q.eq(q.field("isCompleted"), false))
+      .order("desc")
+      .collect();
+  },
+});
+
+export const getByFilter = query({
+  args: { 
+    sessionId: v.id("mcpSessions"),
+    filter: v.object({
+      project_id: v.optional(v.string()),
+      label: v.optional(v.string()),
+      filter: v.optional(v.string()),
+    }),
+  },
+  handler: async (ctx, args) => {
+    const session = await ctx.db.get(args.sessionId);
+    if (!session) return [];
+    
+    let query = ctx.db
+      .query("tasks")
+      .withIndex("by_user", (q) => q.eq("userId", session.userId));
+    
+    if (args.filter.project_id) {
+      // Find project by ID
+      const project = await ctx.db
+        .query("projects")
+        .withIndex("by_user", (q) => q.eq("userId", session.userId))
+        .filter((q) => q.eq(q.field("todoistId"), args.filter.project_id))
+        .first();
+      
+      if (project) {
+        query = query.filter((q) => q.eq(q.field("projectId"), project._id));
+      }
     }
     
-    return await query.order("desc").collect();
+    const tasks = await query.collect();
+    
+    // Apply additional filters
+    return tasks.filter(task => {
+      if (args.filter.label && !task.labels.includes(args.filter.label)) {
+        return false;
+      }
+      if (args.filter.filter && !task.content.toLowerCase().includes(args.filter.filter.toLowerCase())) {
+        return false;
+      }
+      return true;
+    });
   },
 });
 
-// タスク作成
-export const createTask = mutation({
+export const getByIds = query({
+  args: { 
+    sessionId: v.id("mcpSessions"),
+    ids: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const session = await ctx.db.get(args.sessionId);
+    if (!session) return [];
+    
+    const tasks = [];
+    for (const id of args.ids) {
+      const task = await ctx.db.get(id as any);
+      if (task && task.userId === session.userId) {
+        tasks.push(task);
+      }
+    }
+    return tasks;
+  },
+});
+
+export const getByProject = query({
+  args: { projectId: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("tasks")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId as any))
+      .collect();
+  },
+});
+
+export const get = query({
+  args: { id: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.id as any);
+  },
+});
+
+// Task mutations
+export const create = mutation({
   args: {
-    userId: v.id("users"),
-    projectId: v.optional(v.id("projects")),
+    sessionId: v.id("mcpSessions"),
     content: v.string(),
     description: v.optional(v.string()),
+    project_id: v.optional(v.string()),
     priority: v.optional(v.number()),
-    dueDate: v.optional(v.number()),
+    due_date: v.optional(v.string()),
     labels: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
-    const now = Date.now();
+    const session = await ctx.db.get(args.sessionId);
+    if (!session) {
+      throw new Error("Invalid session");
+    }
     
-    return await ctx.db.insert("tasks", {
-      userId: args.userId,
-      projectId: args.projectId,
+    let projectId = undefined;
+    if (args.project_id) {
+      const project = await ctx.db
+        .query("projects")
+        .withIndex("by_user", (q) => q.eq("userId", session.userId))
+        .filter((q) => q.eq(q.field("todoistId"), args.project_id))
+        .first();
+      projectId = project?._id;
+    }
+    
+    const dueDate = args.due_date ? new Date(args.due_date).getTime() : undefined;
+    
+    const taskId = await ctx.db.insert("tasks", {
+      userId: session.userId,
+      projectId,
       content: args.content,
-      description: args.description || "",
+      description: args.description,
       isCompleted: false,
       priority: args.priority || 1,
-      order: now,
-      dueDate: args.dueDate,
+      order: Date.now(),
+      dueDate,
       labels: args.labels || [],
-      createdAt: now,
-      updatedAt: now,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
     });
+    
+    return await ctx.db.get(taskId);
   },
 });
 
-// タスク更新
-export const updateTask = mutation({
+export const update = mutation({
   args: {
-    id: v.id("tasks"),
+    sessionId: v.id("mcpSessions"),
+    task_id: v.string(),
     content: v.optional(v.string()),
     description: v.optional(v.string()),
-    isCompleted: v.optional(v.boolean()),
     priority: v.optional(v.number()),
-    dueDate: v.optional(v.number()),
+    due_date: v.optional(v.string()),
     labels: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
-    const { id, ...updates } = args;
+    const session = await ctx.db.get(args.sessionId);
+    if (!session) {
+      throw new Error("Invalid session");
+    }
     
-    return await ctx.db.patch(id, {
-      ...updates,
+    const task = await ctx.db.get(args.task_id as any);
+    if (!task || task.userId !== session.userId) {
+      throw new Error("Task not found");
+    }
+    
+    const updateData: any = {
       updatedAt: Date.now(),
-    });
+    };
+    
+    if (args.content !== undefined) updateData.content = args.content;
+    if (args.description !== undefined) updateData.description = args.description;
+    if (args.priority !== undefined) updateData.priority = args.priority;
+    if (args.due_date !== undefined) updateData.dueDate = new Date(args.due_date).getTime();
+    if (args.labels !== undefined) updateData.labels = args.labels;
+    
+    await ctx.db.patch(args.task_id as any, updateData);
+    return await ctx.db.get(args.task_id as any);
   },
 });
 
-// タスク削除
-export const deleteTask = mutation({
-  args: { id: v.id("tasks") },
+export const complete = mutation({
+  args: {
+    sessionId: v.id("mcpSessions"),
+    taskId: v.string(),
+  },
   handler: async (ctx, args) => {
-    return await ctx.db.delete(args.id);
+    const session = await ctx.db.get(args.sessionId);
+    if (!session) {
+      throw new Error("Invalid session");
+    }
+    
+    const task = await ctx.db.get(args.taskId as any);
+    if (!task || task.userId !== session.userId) {
+      throw new Error("Task not found");
+    }
+    
+    await ctx.db.patch(args.taskId as any, {
+      isCompleted: true,
+      updatedAt: Date.now(),
+    });
+    
+    return await ctx.db.get(args.taskId as any);
   },
 });
 
-// タスク完了/未完了切り替え
-export const toggleTaskCompletion = mutation({
+export const markIncomplete = mutation({
   args: { id: v.id("tasks") },
   handler: async (ctx, args) => {
-    const task = await ctx.db.get(args.id);
-    if (!task) throw new Error("Task not found");
-    
-    return await ctx.db.patch(args.id, {
-      isCompleted: !task.isCompleted,
+    await ctx.db.patch(args.id, {
+      isCompleted: false,
       updatedAt: Date.now(),
     });
+    return await ctx.db.get(args.id);
+  },
+});
+
+export const remove = mutation({
+  args: { id: v.id("tasks") },
+  handler: async (ctx, args) => {
+    await ctx.db.delete(args.id);
+  },
+});
+
+// Bulk operations for sync
+export const bulkUpdate = mutation({
+  args: { 
+    tasks: v.array(v.object({
+      id: v.optional(v.string()),
+      todoistId: v.optional(v.string()),
+      content: v.string(),
+      description: v.optional(v.string()),
+      isCompleted: v.boolean(),
+      priority: v.number(),
+      projectId: v.optional(v.string()),
+      dueDate: v.optional(v.number()),
+      labels: v.array(v.string()),
+    }))
+  },
+  handler: async (ctx, args) => {
+    for (const taskData of args.tasks) {
+      if (taskData.id) {
+        // Update existing task
+        await ctx.db.patch(taskData.id as any, {
+          content: taskData.content,
+          description: taskData.description,
+          isCompleted: taskData.isCompleted,
+          priority: taskData.priority,
+          dueDate: taskData.dueDate,
+          labels: taskData.labels,
+          updatedAt: Date.now(),
+        });
+      }
+      // Note: Creating new tasks would require userId context
+    }
   },
 }); 
