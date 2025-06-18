@@ -107,8 +107,7 @@ describe('MCPServer Integration Tests', () => {
       const request_causing_error = {
         jsonrpc: '2.0',
         id: 1,
-        method: 'initialize',
-        params: null
+        params: {}
       }
 
       const response = await request(app)

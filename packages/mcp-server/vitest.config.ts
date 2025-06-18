@@ -5,4 +5,9 @@ export default defineConfig({
     globals: true,
     environment: 'node',
   },
+  css: {
+    postcss: {
+      plugins: []
+    }
+  }
 })

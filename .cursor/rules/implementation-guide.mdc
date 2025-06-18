@@ -80,7 +80,7 @@ alwaysApply: false
   description: {{実装指示書}}による実装を100点満点で{{実装評価}}する。
 
 - name: 実装評価
-  description: 実装の評価値。100点満点。80点以上を合格ラインとする。
+  description: 実装の評価値。100点満点。90点以上を合格ラインとする。
   
 - name: コミット
   action: git commit -m 'AI implemented {{指示書名}}'
