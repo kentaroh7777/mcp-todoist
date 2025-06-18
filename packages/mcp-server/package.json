@@ -14,10 +14,10 @@
   "devDependencies": {
     "@types/axios": "^0.14.4",
     "@types/node": "^20.0.0",
-    "@types/supertest": "^6.0.0",
+    "@types/supertest": "^6.0.3",
     "axios": "^1.10.0",
     "nock": "^14.0.5",
-    "supertest": "^6.3.0",
+    "supertest": "^6.3.4",
     "typescript": "^5.0.0",
     "vitest": "^1.0.0"
   },
