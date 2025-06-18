@@ -72,6 +72,9 @@ mcp-todoist/
 │   │   ├── config/              # 設定管理
 │   │   │   ├── index.ts         # 設定定義
 │   │   │   └── validation.ts    # 設定検証
+│   │   ├── types/               # TypeScript型定義
+│   │   │   └── mcp.ts           # MCPプロトコル型
+│   │   ├── index.ts             # メインエクスポート
 │   │   ├── package.json
 │   │   ├── tsconfig.json
 │   │   └── .env.example

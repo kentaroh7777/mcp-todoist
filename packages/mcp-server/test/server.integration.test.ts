@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import request from 'supertest'
-import { MCPServer } from '../src/server/index'
+import { MCPServer } from '../server/index'
 
 describe('MCPServer Integration Tests', () => {
   let server: MCPServer

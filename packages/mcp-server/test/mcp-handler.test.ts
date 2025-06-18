@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { MCPProtocolHandler } from '../src/server/mcp-handler'
+import { MCPProtocolHandler } from '../server/mcp-handler'
 
 describe('MCPProtocolHandler', () => {
   let handler: MCPProtocolHandler
