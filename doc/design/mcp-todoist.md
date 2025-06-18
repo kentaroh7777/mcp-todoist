@@ -74,6 +74,32 @@ mcp-todoist/
 │   │   ├── tsconfig.json
 │   │   └── .env.example
 │   │
+│   ├── web-ui/                  # Next.js WebUI
+│   │   ├── app/                 # App Router
+│   │   │   ├── accounts/        # アカウント管理ページ
+│   │   │   ├── dashboard/       # ダッシュボード
+│   │   │   ├── test/            # MCPテスター
+│   │   │   ├── api/             # Next.js API Routes
+│   │   │   ├── globals.css      # グローバルスタイル
+│   │   │   ├── layout.tsx       # ルートレイアウト
+│   │   │   └── page.tsx         # ホームページ
+│   │   ├── components/          # React コンポーネント
+│   │   │   ├── accounts/        # アカウント関連UI
+│   │   │   ├── dashboard/       # ダッシュボードUI
+│   │   │   ├── mcp/             # MCPテスト関連
+│   │   │   └── ui/              # 共通UIコンポーネント
+│   │   ├── lib/                 # ユーティリティ
+│   │   │   ├── mcp-client.ts    # MCPクライアント
+│   │   │   ├── auth.ts          # 認証ヘルパー
+│   │   │   ├── firebase.ts      # Firebase設定
+│   │   │   └── convex.ts        # Convex設定
+│   │   ├── hooks/               # React Hooks
+│   │   ├── types/               # WebUI固有の型定義
+│   │   ├── package.json
+│   │   ├── next.config.js       # Next.js設定
+│   │   ├── tsconfig.json
+│   │   └── .env.example
+│   │
 │   └── shared/                  # 共通型定義・ユーティリティ
 │       ├── types/               # TypeScript型定義
 │       │   ├── mcp.ts           # MCPプロトコル型
@@ -83,28 +109,6 @@ mcp-todoist/
 │       ├── constants/           # 定数定義
 │       ├── package.json
 │       └── tsconfig.json
-│
-├── src/                         # Next.js WebUI
-│   ├── app/                     # App Router
-│   │   ├── accounts/            # アカウント管理ページ
-│   │   ├── dashboard/           # ダッシュボード
-│   │   ├── test/                # MCPテスター
-│   │   ├── api/                 # Next.js API Routes
-│   │   ├── globals.css          # グローバルスタイル
-│   │   ├── layout.tsx           # ルートレイアウト
-│   │   └── page.tsx             # ホームページ
-│   ├── components/              # React コンポーネント
-│   │   ├── accounts/            # アカウント関連UI
-│   │   ├── dashboard/           # ダッシュボードUI
-│   │   ├── mcp/                 # MCPテスト関連
-│   │   └── ui/                  # 共通UIコンポーネント
-│   ├── lib/                     # ユーティリティ
-│   │   ├── mcp-client.ts        # MCPクライアント
-│   │   ├── auth.ts              # 認証ヘルパー
-│   │   ├── firebase.ts          # Firebase設定
-│   │   └── convex.ts            # Convex設定
-│   ├── hooks/                   # React Hooks
-│   └── types/                   # WebUI固有の型定義
 │
 ├── convex/                      # Convex設定・スキーマ
 │   ├── _generated/              # 自動生成ファイル
@@ -119,7 +123,6 @@ mcp-todoist/
 │   └── user/                    # ユーザー文書
 │
 ├── package.json                 # ルートパッケージ（workspaces設定）
-├── next.config.js               # Next.js設定
 ├── tsconfig.json                # TypeScript設定
 └── .env.example                 # 環境変数テンプレート
 ```
