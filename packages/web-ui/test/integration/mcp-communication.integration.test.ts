@@ -195,7 +195,10 @@ describe('MCP通信統合', () => {
     mockServer = new MockMCPServer()
     
     // Firebase認証モック
-    vi.mocked(require('firebase/auth').getIdToken).mockResolvedValue('mock-auth-token')
+    const mockGetIdToken = vi.fn().mockResolvedValue('mock-auth-token')
+    vi.doMock('firebase/auth', () => ({
+      getIdToken: mockGetIdToken
+    }))
     
     // WebSocketモックの拡張
     const originalWebSocket = global.WebSocket

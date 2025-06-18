@@ -89,31 +89,5 @@ export type TodoistProject = {
   updated_at: string;
 };
 
-// MCP Protocol types
-export type MCPRequest = {
-  jsonrpc: "2.0";
-  id: string | number;
-  method: string;
-  params?: Record<string, any>;
-};
-
-export type MCPResponse = {
-  jsonrpc: "2.0";
-  id: string | number;
-  result?: any;
-  error?: {
-    code: number;
-    message: string;
-    data?: any;
-  };
-};
-
-export type MCPTool = {
-  name: string;
-  description: string;
-  inputSchema: {
-    type: "object";
-    properties: Record<string, any>;
-    required?: string[];
-  };
-}; 
+// Re-export all MCP types
+export * from './mcp'

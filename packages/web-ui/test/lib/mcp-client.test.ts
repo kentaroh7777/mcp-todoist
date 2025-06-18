@@ -63,7 +63,10 @@ describe('MCPClient', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     // Firebase認証モック
-    vi.mocked(require('firebase/auth').getIdToken).mockResolvedValue('mock-token')
+    const mockGetIdToken = vi.fn().mockResolvedValue('mock-token')
+    vi.doMock('firebase/auth', () => ({
+      getIdToken: mockGetIdToken
+    }))
   })
 
   afterEach(() => {

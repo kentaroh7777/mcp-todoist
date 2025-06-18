@@ -28,7 +28,7 @@ vi.mock('firebase/app', () => ({
   getApp: vi.fn(),
 }))
 
-// WebSocket モック
+// WebSocket モック（インスタンス追跡付き）
 class MockWebSocket {
   url: string
   readyState: number = 0
@@ -39,6 +39,7 @@ class MockWebSocket {
 
   constructor(url: string) {
     this.url = url
+    ;(MockWebSocket as any).instances.push(this)
     setTimeout(() => {
       this.readyState = 1
       this.onopen?.(new Event('open'))
@@ -58,7 +59,11 @@ class MockWebSocket {
   static readonly OPEN = 1
   static readonly CLOSING = 2
   static readonly CLOSED = 3
+  static instances: MockWebSocket[] = []
 }
+
+// インスタンス配列を初期化
+;(MockWebSocket as any).instances = []
 
 global.WebSocket = MockWebSocket as any
 
@@ -107,12 +112,61 @@ class MockIntersectionObserver {
 
 global.IntersectionObserver = MockIntersectionObserver
 
-// MCP プロトコル モック
-vi.mock('@/lib/mcp-client', () => ({
-  MCPClient: vi.fn(),
+// URL モック
+global.URL = class URL {
+  constructor(url: string) {
+    if (!url.startsWith('http') && !url.startsWith('ws')) {
+      throw new Error('Invalid URL')
+    }
+  }
+  
+  static createObjectURL = vi.fn()
+  static revokeObjectURL = vi.fn()
+}
+
+// createElement モック (ダウンロード用)
+const originalCreateElement = document.createElement
+document.createElement = vi.fn().mockImplementation((tagName: string) => {
+  if (tagName === 'a') {
+    return {
+      click: vi.fn(),
+      href: '',
+      download: ''
+    }
+  }
+  return originalCreateElement.call(document, tagName)
+})
+
+// AuthProvider モック
+vi.mock('@/components/auth/AuthProvider', () => ({
+  useAuth: () => ({
+    user: { uid: 'test-user', email: 'test@example.com' },
+    loading: false,
+    error: null
+  })
 }))
 
-// Todoist API モック
-vi.mock('@/lib/todoist/client', () => ({
-  TodoistClient: vi.fn(),
+// Firebase config モック
+vi.mock('@/lib/config/firebase', () => ({
+  auth: {
+    currentUser: { uid: 'test-user', email: 'test@example.com' }
+  }
 }))
+
+// Ant Design Form モック
+vi.mock('antd', async () => {
+  const actual = await vi.importActual('antd')
+  return {
+    ...actual,
+    Form: {
+      ...((actual as any).Form || {}),
+      useForm: () => [{
+        validateFields: vi.fn().mockResolvedValue({}),
+        resetFields: vi.fn(),
+        setFieldsValue: vi.fn(),
+        getFieldsValue: vi.fn().mockReturnValue({}),
+        submit: vi.fn(),
+      }]
+    }
+  }
+})
