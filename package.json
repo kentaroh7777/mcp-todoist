@@ -1,0 +1,32 @@
+{
+  "name": "mcp-todoist",
+  "version": "0.2.0",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:server": "turbo run dev --filter=mcp-server",
+    "dev:ui": "turbo run dev --filter=web-ui",
+    "build": "turbo run build",
+    "build:server": "turbo run build --filter=mcp-server",
+    "build:ui": "turbo run build --filter=web-ui",
+    "start": "turbo run start",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "typecheck": "turbo run typecheck"
+  },
+  "devDependencies": {
+    "turbo": "^1.13.0",
+    "@types/node": "^20.12.0",
+    "typescript": "^5.4.0",
+    "eslint": "^8.57.0",
+    "prettier": "^3.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  }
+} 
