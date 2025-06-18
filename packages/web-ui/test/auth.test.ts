@@ -258,21 +258,21 @@ describe('AccountManager', () => {
   
   describe('バリデーション', () => {
     it('不正なメールアドレスでエラーを出す', async () => {
-      // AuthManagerが実装されていないため失敗する
-      expect(authManager).toBeUndefined();
+      // 実装されたAuthManagerを使用してテスト
+      const { AuthManager } = await import('@/lib/auth/auth-manager');
+      const authManager = new AuthManager();
       
-      // 実装があれば以下のようなテストになる予定
-      // await expect(authManager.signInWithEmail('invalid-email', 'password'))
-      //   .rejects.toThrow('Invalid email format');
+      await expect(authManager.signInWithEmail('invalid-email', 'password'))
+        .rejects.toThrow('Invalid email format');
     });
     
     it('弱いパスワードでエラーを出す', async () => {
-      // AuthManagerが実装されていないため失敗する
-      expect(authManager).toBeUndefined();
+      // 実装されたAuthManagerを使用してテスト
+      const { AuthManager } = await import('@/lib/auth/auth-manager');
+      const authManager = new AuthManager();
       
-      // 実装があれば以下のようなテストになる予定
-      // await expect(authManager.signUpWithEmail('test@example.com', '123'))
-      //   .rejects.toThrow('Password too weak');
+      await expect(authManager.signUpWithEmail('test@example.com', '123'))
+        .rejects.toThrow('Password too weak');
     });
     
     it('重複するアカウント追加でエラーを出す', async () => {
