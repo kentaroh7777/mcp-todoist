@@ -7,6 +7,9 @@ import {
 } from 'firebase/auth';
 import { auth } from '../config/firebase';
 import { User } from './types';
+import { SecurityManager } from './security';
+import { AuthErrorHandler } from './error-handler';
+import { AuthDataCache } from './cache';
 
 export class AuthManager {
   async signInWithEmail(email: string, password: string): Promise<User> {
@@ -90,6 +93,7 @@ export class AuthManager {
   }
 
   validatePassword(password: string): boolean {
-    return password.length >= 6;
+    const validation = SecurityManager.validatePasswordStrength(password);
+    return validation.isValid;
   }
 }
