@@ -76,11 +76,15 @@ describe('TodoistClient', () => {
     });
 
     it('should handle network errors', async () => {
-      nock(TODOIST_API_BASE)
+      // Create a client with no retries to avoid retry logic interfering
+      const noRetryClient = new TodoistClient('test-token-123', 3000, 0);
+      
+      const scope = nock(TODOIST_API_BASE)
         .get('/tasks')
         .replyWithError('Network error');
 
-      await expect(client.getTasks()).rejects.toThrow('Network error');
+      await expect(noRetryClient.getTasks()).rejects.toThrow('Network error');
+      expect(scope.isDone()).toBe(true);
     });
 
     it('should handle empty response', async () => {

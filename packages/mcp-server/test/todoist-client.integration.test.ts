@@ -1,16 +1,15 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import nock from 'nock';
 import { TodoistClient } from '../src/adapters/todoist-client';
 import { mockTasks, mockProjects, mockTaskCreateResponse, mockErrorResponses } from './fixtures/todoist-responses';
 
 const TODOIST_API_BASE = 'https://api.todoist.com/rest/v2';
-const MOCK_TOKEN = 'integration-test-token-456';
 
 describe('TodoistClient Integration Tests', () => {
   let client: TodoistClient;
 
   beforeEach(() => {
-    client = new TodoistClient(MOCK_TOKEN);
+    client = new TodoistClient('integration-test-token-456');
     nock.cleanAll();
   });
 
@@ -19,25 +18,10 @@ describe('TodoistClient Integration Tests', () => {
   });
 
   describe('Complete Task Workflow', () => {
-    it('should handle full task lifecycle: create → get → update → delete', async () => {
-      const newTaskData = {
-        content: 'Integration test task',
-        description: 'Task for integration testing',
-        project_id: '220474322'
-      };
-
-      const createdTask = {
-        ...mockTaskCreateResponse,
-        id: 'integration-task-id',
-        content: newTaskData.content,
-        description: newTaskData.description,
-        project_id: newTaskData.project_id
-      };
-
-      const updatedTask = {
-        ...createdTask,
-        content: 'Updated integration test task'
-      };
+    it('should handle complete task lifecycle', async () => {
+      const newTaskData = { content: 'Integration test task', project_id: '220474322' };
+      const createdTask = { ...mockTaskCreateResponse, content: 'Integration test task', project_id: '220474322' };
+      const updatedTask = { ...createdTask, content: 'Updated integration test task' };
 
       // Mock task creation
       nock(TODOIST_API_BASE)
@@ -159,39 +143,42 @@ describe('TodoistClient Integration Tests', () => {
 
   describe('Rate Limiting Handling', () => {
     it('should handle rate limit responses appropriately', async () => {
-      nock(TODOIST_API_BASE)
+      // Create a client with no retries to avoid retry logic interfering
+      const noRetryClient = new TodoistClient('integration-test-token-456', 3000, 0);
+      
+      const scope = nock(TODOIST_API_BASE)
         .get('/tasks')
         .reply(429, mockErrorResponses.tooManyRequests.data, {
           'Retry-After': '60'
         });
 
-      await expect(client.getTasks()).rejects.toThrow('Too Many Requests: Rate limit exceeded');
+      await expect(noRetryClient.getTasks()).rejects.toThrow('Too Many Requests: Rate limit exceeded');
+      expect(scope.isDone()).toBe(true);
     });
   });
 
   describe('Timeout Handling', () => {
     it('should handle request timeouts properly', async () => {
-      nock(TODOIST_API_BASE)
+      // Create client with very short timeout and no retries
+      const timeoutClient = new TodoistClient('integration-test-token-456', 50, 0); // 50ms timeout, no retries
+      
+      const scope = nock(TODOIST_API_BASE)
         .get('/tasks')
-        .delay(5000) // Simulate slow response
+        .delay(100) // Delay longer than timeout
         .reply(200, mockTasks);
 
-      // This test assumes the client has a timeout configuration
-      // The actual timeout behavior depends on the client implementation
       const startTime = Date.now();
       
-      try {
-        await client.getTasks();
-        // If no timeout is implemented, this will pass after 5 seconds
-        const duration = Date.now() - startTime;
-        expect(duration).toBeGreaterThan(4000); // Should take at least 4 seconds
-      } catch (error) {
-        // If timeout is implemented, it should throw before 5 seconds
-        const duration = Date.now() - startTime;
-        expect(duration).toBeLessThan(5000);
-        expect(error).toBeDefined();
+      await expect(timeoutClient.getTasks()).rejects.toThrow();
+      
+      const duration = Date.now() - startTime;
+      expect(duration).toBeLessThan(500); // Should timeout quickly
+      
+      // Clean up the scope if it wasn't used
+      if (!scope.isDone()) {
+        nock.cleanAll();
       }
-    });
+    }, 1000); // Give test itself 1 second
   });
 
   describe('Retry Mechanism', () => {
@@ -199,7 +186,7 @@ describe('TodoistClient Integration Tests', () => {
       let attemptCount = 0;
 
       // Mock first attempt failure, second attempt success
-      nock(TODOIST_API_BASE)
+      const scope = nock(TODOIST_API_BASE)
         .get('/tasks')
         .reply(() => {
           attemptCount++;
@@ -210,11 +197,11 @@ describe('TodoistClient Integration Tests', () => {
         })
         .persist(); // Allow multiple calls to the same endpoint
 
-      // This test assumes the client implements retry logic
       const tasks = await client.getTasks();
       expect(tasks).toEqual(mockTasks);
       expect(attemptCount).toBeGreaterThan(1); // Should have retried
       
+      scope.persist(false);
       nock.cleanAll();
     });
   });
@@ -223,15 +210,15 @@ describe('TodoistClient Integration Tests', () => {
     it('should provide clear error messages for authentication failures', async () => {
       const invalidTokenClient = new TodoistClient('invalid-token');
 
-      nock(TODOIST_API_BASE)
+      const scope1 = nock(TODOIST_API_BASE)
         .get('/tasks')
         .reply(401, mockErrorResponses.unauthorized.data);
 
-      nock(TODOIST_API_BASE)
+      const scope2 = nock(TODOIST_API_BASE)
         .get('/projects')
         .reply(401, mockErrorResponses.unauthorized.data);
 
-      nock(TODOIST_API_BASE)
+      const scope3 = nock(TODOIST_API_BASE)
         .post('/tasks')
         .reply(401, mockErrorResponses.unauthorized.data);
 
@@ -239,6 +226,10 @@ describe('TodoistClient Integration Tests', () => {
       await expect(invalidTokenClient.getTasks()).rejects.toThrow('Unauthorized: Invalid API token');
       await expect(invalidTokenClient.getProjects()).rejects.toThrow('Unauthorized: Invalid API token');
       await expect(invalidTokenClient.createTask({ content: 'Test' })).rejects.toThrow('Unauthorized: Invalid API token');
+      
+      expect(scope1.isDone()).toBe(true);
+      expect(scope2.isDone()).toBe(true);
+      expect(scope3.isDone()).toBe(true);
     });
   });
 });

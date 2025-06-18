@@ -19,3 +19,31 @@
 2025-06-18T05:13:00.741431Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("mcp-server"), path: AnchoredSystemPathBuf("packages/mcp-server") }}))
 2025-06-18T05:13:01.139910Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("package-lock.json")}
 2025-06-18T05:13:01.139932Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Root, path: AnchoredSystemPathBuf("") }}))
+2025-06-18T05:16:20.653808Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf(".env copy.example")}
+2025-06-18T05:16:20.654461Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Root, path: AnchoredSystemPathBuf("") }}))
+2025-06-18T05:16:27.544885Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf(".env copy.example")}
+2025-06-18T05:16:27.544897Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Root, path: AnchoredSystemPathBuf("") }}))
+2025-06-18T05:17:38.645859Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("packages/mcp-server/src/adapters"), AnchoredSystemPathBuf("packages/mcp-server/src/adapters/todoist-client.ts"), AnchoredSystemPathBuf("packages/mcp-server/src")}
+2025-06-18T05:17:38.645881Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("mcp-server"), path: AnchoredSystemPathBuf("packages/mcp-server") }}))
+2025-06-18T05:17:58.846709Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("packages/mcp-server/src/types"), AnchoredSystemPathBuf("packages/mcp-server/src/types/todoist.ts")}
+2025-06-18T05:17:58.846739Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("mcp-server"), path: AnchoredSystemPathBuf("packages/mcp-server") }}))
+2025-06-18T05:18:50.447109Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("packages/mcp-server/src/adapters/todoist-client.ts")}
+2025-06-18T05:18:50.447123Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("mcp-server"), path: AnchoredSystemPathBuf("packages/mcp-server") }}))
+2025-06-18T05:19:46.547563Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("packages/mcp-server/src/index.ts")}
+2025-06-18T05:19:46.547617Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("mcp-server"), path: AnchoredSystemPathBuf("packages/mcp-server") }}))
+2025-06-18T05:20:24.849176Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("packages/mcp-server/src/types/todoist.ts")}
+2025-06-18T05:20:24.849187Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("mcp-server"), path: AnchoredSystemPathBuf("packages/mcp-server") }}))
+2025-06-18T05:20:24.849229Z  WARN turborepo_lib::package_changes_watcher: hashes are the same, no need to rerun
+2025-06-18T05:21:44.750162Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("packages/mcp-server/src/adapters/todoist-client.ts")}
+2025-06-18T05:21:44.750174Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("mcp-server"), path: AnchoredSystemPathBuf("packages/mcp-server") }}))
+2025-06-18T05:22:43.552254Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("packages/mcp-server/test/todoist-client.integration.test.ts")}
+2025-06-18T05:22:43.552330Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("mcp-server"), path: AnchoredSystemPathBuf("packages/mcp-server") }}))
+2025-06-18T05:22:57.352183Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("packages/mcp-server/test/todoist-client.test.ts")}
+2025-06-18T05:22:57.352199Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("mcp-server"), path: AnchoredSystemPathBuf("packages/mcp-server") }}))
+2025-06-18T05:23:41.953865Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("packages/mcp-server/test/todoist-client.integration.test.ts")}
+2025-06-18T05:23:41.953885Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("mcp-server"), path: AnchoredSystemPathBuf("packages/mcp-server") }}))
+2025-06-18T05:23:42.053990Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("packages/mcp-server/test/todoist-client.integration.test.ts")}
+2025-06-18T05:23:42.054007Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("mcp-server"), path: AnchoredSystemPathBuf("packages/mcp-server") }}))
+2025-06-18T05:23:42.054125Z  WARN turborepo_lib::package_changes_watcher: hashes are the same, no need to rerun
+2025-06-18T05:23:52.854378Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("packages/mcp-server/test/todoist-client.test.ts")}
+2025-06-18T05:23:52.854399Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("mcp-server"), path: AnchoredSystemPathBuf("packages/mcp-server") }}))
