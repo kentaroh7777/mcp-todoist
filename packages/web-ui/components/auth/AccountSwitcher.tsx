@@ -1,7 +1,11 @@
 'use client';
 
 import React from 'react';
-import { Card, Button, Avatar, Typography, Divider } from 'antd';
+import Card from 'antd/es/card';
+import Button from 'antd/es/button';
+import Avatar from 'antd/es/avatar';
+import Typography from 'antd/es/typography';
+import Divider from 'antd/es/divider';
 import { UserOutlined, PlusOutlined } from '@ant-design/icons';
 
 const { Text } = Typography;
@@ -73,6 +77,10 @@ export const AccountSwitcher: React.FC<AccountSwitcherProps> = ({
             Add Account
           </Button>
         )}
+      </div>
+    </Card>
+  );
+};
       </div>
     </Card>
   );

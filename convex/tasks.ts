@@ -1,59 +1,59 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { api } from "./_generated/api";
 
-// Convex関数の型定義（型エラー回避）
-type ConvexValue = any;
-type ConvexContext = any;
+// Tasks queries and mutations
 
-// 仮の関数定義（実際のConvex設定後に置き換え）
-const v = {
-  id: (table: string) => ({ type: "id", table }),
-  string: () => ({ type: "string" }),
-  number: () => ({ type: "number" }),
-  boolean: () => ({ type: "boolean" }),
-  optional: (type: any) => ({ type: "optional", inner: type }),
-  array: (type: any) => ({ type: "array", inner: type }),
-};
-
-const query = (config: any) => config;
-const mutation = (config: any) => config;
-
-// Basic task queries
 export const getByUser = query({
-  args: { userId: v.id("users") },
+  args: { 
+    userId: v.id("users"),
+  },
   handler: async (ctx, args) => {
     return await ctx.db
       .query("tasks")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
       .filter((q) => q.eq(q.field("isCompleted"), false))
-      .order("desc")
       .collect();
   },
 });
 
 export const getBySession = query({
-  args: { sessionId: v.id("mcpSessions") },
+  args: { 
+    sessionId: v.id("mcpSessions"),
+    projectId: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
     const session = await ctx.db.get(args.sessionId);
     if (!session) return [];
     
-    return await ctx.db
+    let query = ctx.db
       .query("tasks")
       .withIndex("by_user", (q) => q.eq("userId", session.userId))
-      .filter((q) => q.eq(q.field("isCompleted"), false))
-      .order("desc")
-      .collect();
+      .filter((q) => q.eq(q.field("isCompleted"), false));
+
+    // Apply project filter if provided
+    if (args.projectId) {
+      const project = await ctx.db
+        .query("projects")
+        .withIndex("by_user", (q) => q.eq("userId", session.userId))
+        .filter((q) => q.eq(q.field("todoistId"), args.projectId))
+        .first();
+      if (project) {
+        query = query.filter((q) => q.eq(q.field("projectId"), project._id));
+      }
+    }
+
+    return await query.collect();
   },
 });
 
 export const getByFilter = query({
   args: { 
     sessionId: v.id("mcpSessions"),
-    filter: v.object({
-      project_id: v.optional(v.string()),
-      label: v.optional(v.string()),
-      filter: v.optional(v.string()),
-    }),
+    // Simple filter parameters
+    projectId: v.optional(v.string()),
+    completed: v.optional(v.boolean()),
+    priority: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const session = await ctx.db.get(args.sessionId);
@@ -62,28 +62,27 @@ export const getByFilter = query({
     let query = ctx.db
       .query("tasks")
       .withIndex("by_user", (q) => q.eq("userId", session.userId));
-    
-    if (args.filter.project_id) {
-      // Find project by ID
+
+    // Apply project filter if provided
+    if (args.projectId) {
       const project = await ctx.db
         .query("projects")
         .withIndex("by_user", (q) => q.eq("userId", session.userId))
-        .filter((q) => q.eq(q.field("todoistId"), args.filter.project_id))
+        .filter((q) => q.eq(q.field("todoistId"), args.projectId))
         .first();
-      
       if (project) {
         query = query.filter((q) => q.eq(q.field("projectId"), project._id));
       }
     }
-    
+
     const tasks = await query.collect();
-    
+
     // Apply additional filters
     return tasks.filter(task => {
-      if (args.filter.label && !task.labels.includes(args.filter.label)) {
+      if (args.completed !== undefined && task.isCompleted !== args.completed) {
         return false;
       }
-      if (args.filter.filter && !task.content.toLowerCase().includes(args.filter.filter.toLowerCase())) {
+      if (args.priority !== undefined && task.priority !== args.priority) {
         return false;
       }
       return true;
@@ -94,15 +93,18 @@ export const getByFilter = query({
 export const getByIds = query({
   args: { 
     sessionId: v.id("mcpSessions"),
-    ids: v.array(v.string()),
+    taskIds: v.array(v.string()),
   },
   handler: async (ctx, args) => {
     const session = await ctx.db.get(args.sessionId);
     if (!session) return [];
     
     const tasks = [];
-    for (const id of args.ids) {
-      const task = await ctx.db.get(id as any);
+    for (const taskId of args.taskIds) {
+      const task = await ctx.db
+        .query("tasks")
+        .withIndex("by_todoist_id", (q) => q.eq("todoistId", taskId))
+        .first();
       if (task && task.userId === session.userId) {
         tasks.push(task);
       }
@@ -112,19 +114,21 @@ export const getByIds = query({
 });
 
 export const getByProject = query({
-  args: { projectId: v.string() },
+  args: { 
+    projectId: v.id("projects"),
+  },
   handler: async (ctx, args) => {
     return await ctx.db
       .query("tasks")
-      .withIndex("by_project", (q) => q.eq("projectId", args.projectId as any))
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .collect();
   },
 });
 
 export const get = query({
-  args: { id: v.string() },
+  args: { id: v.id("tasks") },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.id as any);
+    return await ctx.db.get(args.id);
   },
 });
 
@@ -134,9 +138,9 @@ export const create = mutation({
     sessionId: v.id("mcpSessions"),
     content: v.string(),
     description: v.optional(v.string()),
-    project_id: v.optional(v.string()),
+    projectId: v.optional(v.string()),
     priority: v.optional(v.number()),
-    due_date: v.optional(v.string()),
+    dueDate: v.optional(v.number()),
     labels: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
@@ -144,33 +148,32 @@ export const create = mutation({
     if (!session) {
       throw new Error("Invalid session");
     }
-    
-    let projectId = undefined;
-    if (args.project_id) {
+
+    let projectObjectId = undefined;
+    if (args.projectId) {
       const project = await ctx.db
         .query("projects")
         .withIndex("by_user", (q) => q.eq("userId", session.userId))
-        .filter((q) => q.eq(q.field("todoistId"), args.project_id))
+        .filter((q) => q.eq(q.field("todoistId"), args.projectId))
         .first();
-      projectId = project?._id;
+      projectObjectId = project?._id;
     }
-    
-    const dueDate = args.due_date ? new Date(args.due_date).getTime() : undefined;
-    
+
+    const now = Date.now();
     const taskId = await ctx.db.insert("tasks", {
       userId: session.userId,
-      projectId,
+      projectId: projectObjectId,
       content: args.content,
       description: args.description,
       isCompleted: false,
       priority: args.priority || 1,
-      order: Date.now(),
-      dueDate,
+      order: now,
+      dueDate: args.dueDate,
       labels: args.labels || [],
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
+      createdAt: now,
+      updatedAt: now,
     });
-    
+
     return await ctx.db.get(taskId);
   },
 });
@@ -178,11 +181,11 @@ export const create = mutation({
 export const update = mutation({
   args: {
     sessionId: v.id("mcpSessions"),
-    task_id: v.string(),
+    taskId: v.string(),
     content: v.optional(v.string()),
     description: v.optional(v.string()),
     priority: v.optional(v.number()),
-    due_date: v.optional(v.string()),
+    dueDate: v.optional(v.number()),
     labels: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
@@ -190,24 +193,29 @@ export const update = mutation({
     if (!session) {
       throw new Error("Invalid session");
     }
-    
-    const task = await ctx.db.get(args.task_id as any);
-    if (!task || task.userId !== session.userId) {
+
+    const task = await ctx.db
+      .query("tasks")
+      .withIndex("by_todoist_id", (q) => q.eq("todoistId", args.taskId))
+      .filter((q) => q.eq(q.field("userId"), session.userId))
+      .first();
+
+    if (!task) {
       throw new Error("Task not found");
     }
-    
-    const updateData: any = {
+
+    const updates: any = {
       updatedAt: Date.now(),
     };
-    
-    if (args.content !== undefined) updateData.content = args.content;
-    if (args.description !== undefined) updateData.description = args.description;
-    if (args.priority !== undefined) updateData.priority = args.priority;
-    if (args.due_date !== undefined) updateData.dueDate = new Date(args.due_date).getTime();
-    if (args.labels !== undefined) updateData.labels = args.labels;
-    
-    await ctx.db.patch(args.task_id as any, updateData);
-    return await ctx.db.get(args.task_id as any);
+
+    if (args.content !== undefined) updates.content = args.content;
+    if (args.description !== undefined) updates.description = args.description;
+    if (args.priority !== undefined) updates.priority = args.priority;
+    if (args.dueDate !== undefined) updates.dueDate = args.dueDate;
+    if (args.labels !== undefined) updates.labels = args.labels;
+
+    await ctx.db.patch(task._id, updates);
+    return await ctx.db.get(task._id);
   },
 });
 
@@ -221,69 +229,58 @@ export const complete = mutation({
     if (!session) {
       throw new Error("Invalid session");
     }
-    
-    const task = await ctx.db.get(args.taskId as any);
-    if (!task || task.userId !== session.userId) {
+
+    const task = await ctx.db
+      .query("tasks")
+      .withIndex("by_todoist_id", (q) => q.eq("todoistId", args.taskId))
+      .filter((q) => q.eq(q.field("userId"), session.userId))
+      .first();
+
+    if (!task) {
       throw new Error("Task not found");
     }
-    
-    await ctx.db.patch(args.taskId as any, {
+
+    await ctx.db.patch(task._id, {
       isCompleted: true,
       updatedAt: Date.now(),
     });
-    
-    return await ctx.db.get(args.taskId as any);
+
+    return await ctx.db.get(task._id);
   },
 });
 
-export const markIncomplete = mutation({
-  args: { id: v.id("tasks") },
-  handler: async (ctx, args) => {
-    await ctx.db.patch(args.id, {
-      isCompleted: false,
-      updatedAt: Date.now(),
-    });
-    return await ctx.db.get(args.id);
+export const bulkSync = mutation({
+  args: {
+    sessionId: v.id("mcpSessions"),
+    tasksData: v.array(v.string()), // JSON string array
   },
-});
+  handler: async (ctx, args) => {
+    const session = await ctx.db.get(args.sessionId);
+    if (!session) {
+      throw new Error("Invalid session");
+    }
 
-export const remove = mutation({
-  args: { id: v.id("tasks") },
-  handler: async (ctx, args) => {
-    await ctx.db.delete(args.id);
-  },
-});
-
-// Bulk operations for sync
-export const bulkUpdate = mutation({
-  args: { 
-    tasks: v.array(v.object({
-      id: v.optional(v.string()),
-      todoistId: v.optional(v.string()),
-      content: v.string(),
-      description: v.optional(v.string()),
-      isCompleted: v.boolean(),
-      priority: v.number(),
-      projectId: v.optional(v.string()),
-      dueDate: v.optional(v.number()),
-      labels: v.array(v.string()),
-    }))
-  },
-  handler: async (ctx, args) => {
-    for (const taskData of args.tasks) {
-      if (taskData.id) {
-        // Update existing task
-        await ctx.db.patch(taskData.id as any, {
+    const results = [];
+    for (const taskDataStr of args.tasksData) {
+      try {
+        const taskData = JSON.parse(taskDataStr);
+        const taskId = await ctx.db.insert("tasks", {
+          userId: session.userId,
           content: taskData.content,
           description: taskData.description,
-          isCompleted: taskData.isCompleted,
-          priority: taskData.priority,
+          isCompleted: taskData.isCompleted || false,
+          priority: taskData.priority || 1,
+          order: taskData.order || Date.now(),
           dueDate: taskData.dueDate,
-          labels: taskData.labels,
+          labels: taskData.labels || [],
+          createdAt: Date.now(),
           updatedAt: Date.now(),
         });
+        results.push(await ctx.db.get(taskId));
+      } catch (error) {
+        console.error("Failed to sync task:", error);
       }
-      // Note: Creating new tasks would require userId context
     }
+    return results;
   },
 }); 

@@ -1,7 +1,10 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Form, Input, Button, Alert } from 'antd';
+import Form from 'antd/es/form';
+import Input from 'antd/es/input';
+import Button from 'antd/es/button';
+import Alert from 'antd/es/alert';
 import { EyeInvisibleOutlined, EyeTwoTone } from '@ant-design/icons';
 
 interface SignInFormProps {

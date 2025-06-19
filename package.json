@@ -7,26 +7,23 @@
   ],
   "scripts": {
     "dev": "turbo run dev",
-    "dev:server": "turbo run dev --filter=mcp-server",
-    "dev:ui": "turbo run dev --filter=web-ui",
+    "dev:web": "turbo run dev --filter=web-ui",
+    "dev:mcp": "turbo run dev --filter=mcp-server",
     "build": "turbo run build",
-    "build:server": "turbo run build --filter=mcp-server",
-    "build:ui": "turbo run build --filter=web-ui",
     "start": "turbo run start",
     "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "clean": "turbo run clean && rm -rf node_modules",
-    "typecheck": "turbo run typecheck"
+    "test:ui": "turbo run test:ui",
+    "test:coverage": "turbo run test:coverage",
+    "test:e2e": "turbo run test:e2e",
+    "clean": "turbo run clean",
+    "convex:dev": "convex dev",
+    "convex:deploy": "convex deploy"
   },
   "devDependencies": {
-    "turbo": "^1.13.0",
-    "@types/node": "^20.12.0",
+    "turbo": "^1.10.0",
     "typescript": "^5.4.0",
-    "eslint": "^8.57.0",
-    "prettier": "^3.2.0"
-  },
-  "engines": {
-    "node": ">=18.0.0",
-    "npm": ">=8.0.0"
+    "convex": "^1.10.0"
   }
-} 
+}

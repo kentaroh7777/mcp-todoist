@@ -126,3 +126,5 @@ Thumbs.db
 
 # Turbo
 .turbo/
+
+test-results/

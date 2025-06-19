@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useAction } from 'convex/react';
-import { api } from '@/convex/_generated/api';
+import { api } from '../../convex/_generated/api';
 import type {
   MCPRequest,
   MCPResponse,
@@ -287,7 +287,7 @@ export function useConvexMCPClient(config?: MCPClientConfig) {
   client.initializeConvexHooks({
     action: useAction(api.mcp.handleMCPRequest),
     mutation: useMutation(api.mcp.createMCPSession),
-    query: useQuery(api.mcp.getMCPSession)
+    query: useQuery  // queryフック自体を渡すだけ、直接実行しない
   });
   
   return client;

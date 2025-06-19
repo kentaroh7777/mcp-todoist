@@ -4,6 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "dev": "ts-node --watch server/start.ts",
+    "build": "tsc",
+    "start": "node dist/server/start.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:run": "vitest run"
@@ -19,7 +22,8 @@
     "nock": "^14.0.5",
     "supertest": "^6.3.4",
     "typescript": "^5.0.0",
-    "vitest": "^1.0.0"
+    "vitest": "^1.0.0",
+    "ts-node": "^10.9.0"
   },
   "dependencies": {
     "express": "^4.18.0",

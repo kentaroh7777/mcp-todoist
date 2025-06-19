@@ -1,4 +1,10 @@
-import { Layout, Typography, Card, Row, Col } from 'antd'
+'use client'
+
+import Layout from 'antd/es/layout'
+import Typography from 'antd/es/typography'
+import Card from 'antd/es/card'
+import Row from 'antd/es/row'
+import Col from 'antd/es/col'
 import { CheckCircleOutlined, ProjectOutlined, CalendarOutlined } from '@ant-design/icons'
 
 const { Header, Content } = Layout
