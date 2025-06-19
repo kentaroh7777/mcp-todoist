@@ -28,7 +28,11 @@ describe('MCPProtocolHandler', () => {
         id: 1,
         result: {
           protocolVersion: '2024-11-05',
-          capabilities: {},
+          capabilities: {
+            tools: { listChanged: true },
+            resources: { subscribe: true, listChanged: true },
+            prompts: { listChanged: true }
+          },
           serverInfo: {
             name: 'mcp-todoist',
             version: '1.0.0'

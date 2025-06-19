@@ -8,6 +8,14 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./test/setup.ts'],
     globals: true,
+    // E2Eテストを除外（Playwrightテストを避ける）
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/test/e2e/**',
+      '**/*.e2e.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}',
+      '**/*.spec.ts' // Playwrightのspecファイルを除外
+    ],
     // タイムアウト設定を強化
     testTimeout: 15000, // 15秒
     hookTimeout: 10000, // 10秒

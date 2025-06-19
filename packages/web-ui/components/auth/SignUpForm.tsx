@@ -153,6 +153,3 @@ export const SignUpForm: React.FC<SignUpFormProps> = ({
     </div>
   );
 };
-    </div>
-  );
-};

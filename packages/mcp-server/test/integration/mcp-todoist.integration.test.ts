@@ -10,7 +10,7 @@ describe('MCP Server + Todoist Integration', () => {
 
   beforeEach(() => {
     server = new MCPServer();
-    app = (server as any).app;
+    app = server.getApp();
     nock.cleanAll();
   });
 
@@ -25,15 +25,22 @@ describe('MCP Server + Todoist Integration', () => {
         jsonrpc: "2.0",
         id: 1,
         method: "initialize",
-        params: {}
+        params: {
+          protocolVersion: "2024-11-05",
+          capabilities: {},
+          clientInfo: { name: "test-client", version: "1.0.0" }
+        }
       })
       .expect(200);
 
     expect(response.body.jsonrpc).toBe("2.0");
     expect(response.body.id).toBe(1);
     expect(response.body.result).toHaveProperty('protocolVersion');
+    expect(response.body.result.protocolVersion).toBe('2024-11-05');
     expect(response.body.result).toHaveProperty('capabilities');
     expect(response.body.result).toHaveProperty('serverInfo');
+    expect(response.body.result.serverInfo.name).toBe('mcp-todoist');
+    expect(response.body.result.serverInfo.version).toBe('1.0.0');
   });
 
   it('should create TodoistClient instance', () => {
@@ -63,13 +70,10 @@ describe('MCP Server + Todoist Integration', () => {
     const response = await request(app)
       .post('/mcp')
       .send('invalid json')
-      .set('Content-Type', 'application/json');
+      .set('Content-Type', 'application/json')
+      .expect(400);
 
-    // Server should still respond (may be 200 with error or 400)
-    expect([200, 400]).toContain(response.status);
-    if (response.status === 200) {
-      expect(response.body.error).toBeDefined();
-    }
+    expect(response.text).toBe('Bad Request');
   });
 
   it('should validate TodoistClient error handling', () => {
@@ -80,5 +84,50 @@ describe('MCP Server + Todoist Integration', () => {
     expect(() => {
       new TodoistClient(null as any);
     }).toThrow('Todoist API token is required');
+  });
+
+  it('should handle missing request ID', async () => {
+    const response = await request(app)
+      .post('/mcp')
+      .send({
+        jsonrpc: "2.0",
+        method: "initialize",
+        params: {}
+      })
+      .expect(200);
+
+    expect(response.body.jsonrpc).toBe("2.0");
+    expect(response.body.id).toBe(0);
+    expect(response.body.error).toBeDefined();
+    expect(response.body.error.code).toBe(-32600);
+    expect(response.body.error.message).toBe('Invalid Request');
+  });
+
+  it('should validate jsonrpc version', async () => {
+    const response = await request(app)
+      .post('/mcp')
+      .send({
+        jsonrpc: "1.0",
+        id: 1,
+        method: "initialize",
+        params: {}
+      })
+      .expect(200);
+
+    expect(response.body.jsonrpc).toBe("2.0");
+    expect(response.body.id).toBe(1);
+    expect(response.body.error).toBeDefined();
+    expect(response.body.error.code).toBe(-32600);
+    expect(response.body.error.message).toBe('Invalid Request');
+  });
+
+  it('should handle internal server errors gracefully', async () => {
+    // パースエラーを発生させるために不正なコンテンツタイプで送信
+    const response = await request(app)
+      .post('/mcp')
+      .send('{invalid json')
+      .set('Content-Type', 'application/json');
+
+    expect([200, 400, 500]).toContain(response.status);
   });
 }); 

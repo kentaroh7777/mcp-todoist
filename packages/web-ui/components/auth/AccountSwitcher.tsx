@@ -81,7 +81,3 @@ export const AccountSwitcher: React.FC<AccountSwitcherProps> = ({
     </Card>
   );
 };
-      </div>
-    </Card>
-  );
-};

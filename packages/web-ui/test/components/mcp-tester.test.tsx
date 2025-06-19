@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MCPTester } from '@/components/MCPTester'
+import MCPTester from '@/components/MCPTester'
 
 // MCPTesterコンポーネントのProps型定義（テスト用）
 interface MCPTesterProps {

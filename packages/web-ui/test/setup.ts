@@ -2,6 +2,33 @@ import '@testing-library/jest-dom'
 import { vi } from 'vitest'
 import React from 'react'
 
+// DOM環境の強化設定
+if (typeof window !== 'undefined' && window.document) {
+  // document.body と document.head が存在することを保証
+  if (!document.body) {
+    const body = document.createElement('body')
+    document.documentElement.appendChild(body)
+  }
+  if (!document.head) {
+    const head = document.createElement('head')
+    document.documentElement.appendChild(head)
+  }
+  
+  // スタイル関連のプロパティを設定（全ての要素に対して）
+  const originalCreateElement = document.createElement
+  document.createElement = function(tagName: string) {
+    const element = originalCreateElement.call(this, tagName)
+    if (!element.style) {
+      Object.defineProperty(element, 'style', {
+        value: {},
+        writable: true,
+        configurable: true
+      })
+    }
+    return element
+  }
+}
+
 // Firebase Auth モックセットアップ
 const mockUser = {
   uid: 'test-user-id',
@@ -47,7 +74,7 @@ vi.mock('firebase/auth', () => ({
   signInWithEmailAndPassword: vi.fn((...args) => mockAuth.signInWithEmailAndPassword(...args)),
   createUserWithEmailAndPassword: vi.fn((...args) => mockAuth.createUserWithEmailAndPassword(...args)),
   signOut: vi.fn((...args) => mockAuth.signOut(...args)),
-  onAuthStateChanged: vi.fn((...args) => mockAuth.onAuthStateChanged(...args)),
+  onAuthStateChanged: vi.fn((callback) => mockAuth.onAuthStateChanged(callback)),
   getIdToken: vi.fn((user) => user?.getIdToken() || Promise.resolve('mock-id-token')),
   updateProfile: vi.fn().mockResolvedValue(undefined),
   sendEmailVerification: vi.fn().mockResolvedValue(undefined),
@@ -149,7 +176,7 @@ class MockWebSocket {
 
   // テスト用メソッド：エラーをシミュレート
   simulateError(error?: Error) {
-    this.onerror?.(error || new Event('error'))
+    this.onerror?.(error instanceof Error ? new ErrorEvent('error', { error }) : (error || new Event('error')))
   }
 
   // テスト用メソッド：強制的に接続を開く
@@ -241,7 +268,7 @@ class MockIntersectionObserver {
   disconnect() {}
 }
 
-global.IntersectionObserver = MockIntersectionObserver
+global.IntersectionObserver = MockIntersectionObserver as any
 
 // URL モック
 global.URL = class URL {
@@ -253,7 +280,9 @@ global.URL = class URL {
   
   static createObjectURL = vi.fn()
   static revokeObjectURL = vi.fn()
-}
+  static canParse = vi.fn().mockReturnValue(true)
+  static parse = vi.fn().mockReturnValue(null)
+} as any
 
 // createElement モック (ダウンロード用)
 const originalCreateElement = document.createElement
