@@ -242,9 +242,28 @@ interface SectionProps {
 }
 
 function ConnectionSection({ state, setState, client, onConnectionChange }: SectionProps) {
+  const [validationError, setValidationError] = useState<string>('');
+  const [connectionError, setConnectionError] = useState<string>('');
+
+  const validateUrl = (url: string): boolean => {
+    const wsPattern = /^wss?:\/\/.+/;
+    const httpPattern = /^https?:\/\/.+/;
+    return wsPattern.test(url) || httpPattern.test(url);
+  };
+
   const handleConnect = useCallback(async () => {
-    if (!state.serverUrl) return;
+    if (!state.serverUrl.trim()) {
+      setValidationError('URLを入力してください');
+      return;
+    }
     
+    if (!validateUrl(state.serverUrl)) {
+      setValidationError('有効なWebSocket URLを入力してください');
+      return;
+    }
+    
+    setValidationError('');
+    setConnectionError('');
     setState(prev => ({ ...prev, connectionState: 'connecting' }));
     
     try {
@@ -256,11 +275,13 @@ function ConnectionSection({ state, setState, client, onConnectionChange }: Sect
         client 
       }));
       onConnectionChange?.(true);
-    } catch (error) {
+    } catch (error: any) {
       setState(prev => ({ 
         ...prev, 
         connectionState: 'error'
       }));
+      const errorMessage = error?.message || 'Connection failed';
+      setConnectionError(errorMessage);
       console.error('Connection failed:', error);
     }
   }, [state.serverUrl, client, setState, onConnectionChange]);
@@ -285,11 +306,22 @@ function ConnectionSection({ state, setState, client, onConnectionChange }: Sect
           data-testid="server-url-input"
           placeholder="ws://localhost:8080/mcp"
           value={state.serverUrl}
-          onChange={e => setState(prev => ({ 
-            ...prev, 
-            serverUrl: e.target.value 
-          }))}
+          onChange={e => {
+            setState(prev => ({ 
+              ...prev, 
+              serverUrl: e.target.value 
+            }));
+            if (validationError) setValidationError('');
+            if (connectionError) setConnectionError('');
+          }}
+          status={validationError ? 'error' : ''}
         />
+        {validationError && (
+          <div className="text-red-500 text-sm mt-1">{validationError}</div>
+        )}
+        {connectionError && (
+          <div className="text-red-500 text-sm mt-1">{connectionError}</div>
+        )}
       </div>
       
       <div className="space-x-2">
@@ -300,7 +332,7 @@ function ConnectionSection({ state, setState, client, onConnectionChange }: Sect
           loading={state.connectionState === 'connecting'}
           disabled={state.connectionState === 'connected'}
         >
-          接続
+          {state.connectionState === 'connecting' ? 'Loading...' : '接続'}
         </Button>
         
         <Button 
@@ -315,6 +347,7 @@ function ConnectionSection({ state, setState, client, onConnectionChange }: Sect
           data-testid="connection-status"
           status={state.connectionState === 'connected' ? 'success' : 'default'}
           text={state.connectionState === 'connected' ? '接続済み' : '未接続'}
+          className={state.connectionState === 'connected' ? 'badge-success' : ''}
         />
       </div>
     </div>
@@ -368,8 +401,9 @@ function ToolsSection({ state, setState, client }: SectionProps) {
       
       const result = await client.callTool(selectedTool, processedValues);
       setToolResult(result);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Tool execution failed:', error);
+      setToolResult({ error: error?.message || 'ツール実行エラー' });
     } finally {
       setLoading(false);
     }
@@ -416,7 +450,11 @@ function ToolsSection({ state, setState, client }: SectionProps) {
       
       {toolResult && (
         <Card data-testid="tool-result-display" title="実行結果" className="mt-4">
-          <JSONDisplay data={toolResult} />
+          {toolResult.error ? (
+            <Alert message="エラー" description={toolResult.error} type="error" />
+          ) : (
+            <JSONDisplay data={toolResult} />
+          )}
         </Card>
       )}
     </div>
@@ -427,6 +465,8 @@ function ResourcesSection({ state, setState, client }: SectionProps) {
   const [selectedResource, setSelectedResource] = useState<string>();
   const [resourceContent, setResourceContent] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(1000);
 
   useEffect(() => {
     if (state.connectionState === 'connected') {
@@ -502,6 +542,17 @@ function ResourcesSection({ state, setState, client }: SectionProps) {
                     <pre className="bg-gray-50 p-3 rounded mt-2 max-h-64 overflow-y-auto text-sm">
                       {resourceContent.text}
                     </pre>
+                    {resourceContent.text.length > 5000 && (
+                      <div data-testid="resource-pagination" className="mt-2 text-center">
+                        <Button size="small" onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))} disabled={currentPage === 1}>
+                          前のページ
+                        </Button>
+                        <span className="mx-2">ページ {currentPage}</span>
+                        <Button size="small" onClick={() => setCurrentPage(prev => prev + 1)}>
+                          次のページ
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 ) : resourceContent.blob ? (
                   <div>
@@ -509,6 +560,17 @@ function ResourcesSection({ state, setState, client }: SectionProps) {
                     <pre className="bg-gray-50 p-3 rounded mt-2 max-h-64 overflow-y-auto text-sm break-all">
                       {resourceContent.blob}
                     </pre>
+                    {resourceContent.blob.length > 5000 && (
+                      <div data-testid="resource-pagination" className="mt-2 text-center">
+                        <Button size="small" onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))} disabled={currentPage === 1}>
+                          前のページ
+                        </Button>
+                        <span className="mx-2">ページ {currentPage}</span>
+                        <Button size="small" onClick={() => setCurrentPage(prev => prev + 1)}>
+                          次のページ
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <JSONDisplay data={resourceContent} />
@@ -525,6 +587,7 @@ function ResourcesSection({ state, setState, client }: SectionProps) {
 function PromptsSection({ state, setState, client }: SectionProps) {
   const [selectedPrompt, setSelectedPrompt] = useState<string>();
   const [promptResult, setPromptResult] = useState<any>(null);
+  const [promptTemplate, setPromptTemplate] = useState<any>(null);
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
 
@@ -540,10 +603,21 @@ function PromptsSection({ state, setState, client }: SectionProps) {
     return state.prompts.find(prompt => prompt.name === selectedPrompt);
   }, [state.prompts, selectedPrompt]);
 
-  const handlePromptChange = (promptName: string) => {
+  const handlePromptChange = async (promptName: string) => {
     setSelectedPrompt(promptName);
     form.resetFields();
     setPromptResult(null);
+    setPromptTemplate(null);
+    
+    // Load prompt template for display
+    if (promptName) {
+      try {
+        const template = await client.getPrompt(promptName, {});
+        setPromptTemplate(template);
+      } catch (error) {
+        console.error('Failed to load prompt template:', error);
+      }
+    }
   };
 
   const handleExecutePrompt = async () => {
@@ -599,6 +673,25 @@ function PromptsSection({ state, setState, client }: SectionProps) {
               </div>
             )}
           </Space>
+        </Card>
+      )}
+      
+      {promptTemplate && (
+        <Card data-testid="prompt-template-display" size="small" title="プロンプトテンプレート">
+          {promptTemplate.messages ? (
+            <div className="space-y-2">
+              {promptTemplate.messages.map((message: any, index: number) => (
+                <div key={index} className="bg-gray-50 p-2 rounded">
+                  <Badge status="processing" text={message.role} className="mb-1" />
+                  <div className="text-sm">
+                    {message.content?.text || JSON.stringify(message.content, null, 2)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <JSONDisplay data={promptTemplate} />
+          )}
         </Card>
       )}
       
