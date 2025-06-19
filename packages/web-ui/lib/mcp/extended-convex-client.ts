@@ -26,6 +26,108 @@ export class ExtendedConvexMCPClient extends ConvexMCPClient {
     };
   }
   
+  // Override public methods to emit events for logging
+  async listTools(): Promise<any> {
+    this.emitRequest('tools/list');
+    try {
+      const result = await super.listTools();
+      this.emitResponse('tools/list', result);
+      return result;
+    } catch (error: any) {
+      this.emitError('tools/list', error);
+      throw error;
+    }
+  }
+
+  async callTool(name: string, args: Record<string, any>): Promise<any> {
+    this.emitRequest('tools/call', { name, arguments: args });
+    try {
+      const result = await super.callTool(name, args);
+      this.emitResponse('tools/call', result);
+      return result;
+    } catch (error: any) {
+      this.emitError('tools/call', error);
+      throw error;
+    }
+  }
+
+  async listResources(): Promise<any> {
+    this.emitRequest('resources/list');
+    try {
+      const result = await super.listResources();
+      this.emitResponse('resources/list', result);
+      return result;
+    } catch (error: any) {
+      this.emitError('resources/list', error);
+      throw error;
+    }
+  }
+
+  async readResource(uri: string): Promise<any> {
+    this.emitRequest('resources/read', { uri });
+    try {
+      const result = await super.readResource(uri);
+      this.emitResponse('resources/read', result);
+      return result;
+    } catch (error: any) {
+      this.emitError('resources/read', error);
+      throw error;
+    }
+  }
+
+  async listPrompts(): Promise<any> {
+    this.emitRequest('prompts/list');
+    try {
+      const result = await super.listPrompts();
+      this.emitResponse('prompts/list', result);
+      return result;
+    } catch (error: any) {
+      this.emitError('prompts/list', error);
+      throw error;
+    }
+  }
+
+  async getPrompt(name: string, args?: Record<string, any>): Promise<any> {
+    this.emitRequest('prompts/get', { name, arguments: args });
+    try {
+      const result = await super.getPrompt(name, args);
+      this.emitResponse('prompts/get', result);
+      return result;
+    } catch (error: any) {
+      this.emitError('prompts/get', error);
+      throw error;
+    }
+  }
+
+  private emitRequest(method: string, params?: any) {
+    const request = {
+      jsonrpc: '2.0' as const,
+      id: Date.now(),
+      method,
+      params
+    };
+    this.emit('request', request);
+  }
+
+  private emitResponse(method: string, result: any) {
+    this.emit('response', {
+      jsonrpc: '2.0' as const,
+      id: Date.now(),
+      result
+    });
+  }
+
+  private emitError(method: string, error: any) {
+    this.emit('response', {
+      jsonrpc: '2.0' as const,
+      id: Date.now(),
+      error: {
+        code: -1,
+        message: error.message
+      }
+    });
+  }
+  
   protected async ensureAuthentication(): Promise<void> {
     if (this.extendedConfig.skipAuthentication) {
       // 認証をスキップしてテストユーザーIDを設定
