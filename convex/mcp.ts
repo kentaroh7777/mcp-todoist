@@ -2,23 +2,56 @@ import { v } from "convex/values";
 import { mutation, query, action } from "./_generated/server";
 import { api } from "./_generated/api";
 
+// Debug: Log all function calls
+console.log('[CONVEX] mcp.ts loaded');
+
 // MCP Session management
 
 export const createMCPSession = mutation({
   args: {
-    userId: v.id("users"),
-    clientInfo: v.object({
+    userId: v.optional(v.union(v.id("users"), v.string())),
+    clientInfo: v.optional(v.object({
       name: v.string(),
       version: v.string(),
-    }),
+    })),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
     
+    // Debug: Log received parameters
+    console.log('[DEBUG] createMCPSession called!');
+    console.log('[DEBUG] createMCPSession received args:', JSON.stringify(args, null, 2));
+    console.log('[DEBUG] clientInfo:', args.clientInfo);
+    console.log('[DEBUG] userId:', args.userId);
+    
+    // Handle test user creation for development
+    let actualUserId: any = args.userId || 'test-user';
+    
+    if (typeof actualUserId === 'string') {
+      // Check if test user exists
+      const existingUser = await ctx.db
+        .query("users")
+        .filter((q) => q.eq(q.field("email"), `${actualUserId}@test.com`))
+        .first();
+        
+      if (!existingUser) {
+        // Create test user
+        actualUserId = await ctx.db.insert("users", {
+          email: `${actualUserId}@test.com`,
+          name: `Test User (${actualUserId})`,
+          todoistApiToken: process.env.TODOIST_API_TOKEN || "61dae250699e84eb85b9c2ab9461c0581873566d",
+          createdAt: now,
+          updatedAt: now,
+        });
+      } else {
+        actualUserId = existingUser._id;
+      }
+    }
+    
     // Close any existing sessions for this user
     const existingSessions = await ctx.db
       .query("mcpSessions")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .withIndex("by_user", (q) => q.eq("userId", actualUserId))
       .filter((q) => q.eq(q.field("connected"), true))
       .collect();
 
@@ -29,10 +62,16 @@ export const createMCPSession = mutation({
       });
     }
 
+    // Default clientInfo if not provided
+    const clientInfo = args.clientInfo || {
+      name: 'unknown-client',
+      version: '0.0.0'
+    };
+
     // Create new session
     const sessionId = await ctx.db.insert("mcpSessions", {
-      userId: args.userId,
-      clientInfo: args.clientInfo,
+      userId: actualUserId,
+      clientInfo: clientInfo,
       protocolVersion: "2024-11-05",
       connected: true,
       createdAt: now,
@@ -48,6 +87,7 @@ export const closeMCPSession = mutation({
     sessionId: v.id("mcpSessions"),
   },
   handler: async (ctx, args) => {
+    console.log('[DEBUG] closeMCPSession called with args:', args);
     const session = await ctx.db.get(args.sessionId);
     if (session && session.connected) {
       await ctx.db.patch(args.sessionId, {
@@ -72,6 +112,7 @@ export const updateLastActivity = mutation({
     sessionId: v.id("mcpSessions"),
   },
   handler: async (ctx, args) => {
+    console.log('[DEBUG] updateLastActivity called with args:', args);
     await ctx.db.patch(args.sessionId, {
       lastActivity: Date.now(),
     });
@@ -85,7 +126,7 @@ export const handleMCPRequest = action({
     sessionId: v.id("mcpSessions"),
     request: v.any(),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<any> => {
     // Get session info
     const session = await ctx.runQuery(api.mcp.getMCPSession, {
       sessionId: args.sessionId,
@@ -117,7 +158,7 @@ export const handleMCPRequest = action({
 
     try {
       // Call packages/mcp-server HTTP API
-      const mcpServerUrl = process.env.MCP_SERVER_URL || "http://localhost:8080";
+      const mcpServerUrl = process.env.MCP_SERVER_URL || "http://localhost:4000";
       
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
@@ -128,17 +169,23 @@ export const handleMCPRequest = action({
         headers["x-todoist-token"] = user.todoistApiToken;
       }
 
+      console.log('[DEBUG] Sending request to MCP server:', mcpServerUrl);
+      console.log('[DEBUG] Request body:', JSON.stringify(args.request, null, 2));
+
       const response = await fetch(`${mcpServerUrl}/mcp`, {
         method: "POST",
         headers,
         body: JSON.stringify(args.request),
       });
 
+      console.log('[DEBUG] MCP server response status:', response.status);
+
       if (!response.ok) {
         throw new Error(`MCP Server error: ${response.status} ${response.statusText}`);
       }
 
       const result = await response.json();
+      console.log('[DEBUG] MCP server response:', JSON.stringify(result, null, 2));
 
       // Update last activity
       await ctx.runMutation(api.mcp.updateLastActivity, {
@@ -170,7 +217,7 @@ export const toolGetTasks = action({
     filter: v.optional(v.string()),
     limit: v.optional(v.number()),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<any> => {
     const request = {
       jsonrpc: "2.0",
       id: Date.now(),
@@ -202,7 +249,7 @@ export const toolCreateTask = action({
     due_string: v.optional(v.string()),
     labels: v.optional(v.array(v.string())),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<any> => {
     const { sessionId, ...taskArgs } = args;
     const request = {
       jsonrpc: "2.0",
@@ -231,7 +278,7 @@ export const toolUpdateTask = action({
     due_string: v.optional(v.string()),
     labels: v.optional(v.array(v.string())),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<any> => {
     const { sessionId, ...taskArgs } = args;
     const request = {
       jsonrpc: "2.0",
@@ -255,7 +302,7 @@ export const toolCloseTask = action({
     sessionId: v.id("mcpSessions"),
     task_id: v.string(),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<any> => {
     const request = {
       jsonrpc: "2.0",
       id: Date.now(),
@@ -279,7 +326,7 @@ export const toolGetProjects = action({
   args: {
     sessionId: v.id("mcpSessions"),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<any> => {
     const request = {
       jsonrpc: "2.0",
       id: Date.now(),

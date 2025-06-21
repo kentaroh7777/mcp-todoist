@@ -66,7 +66,7 @@ export interface MCPToolResult {
 
 // Connection Types
 export interface MCPConnectionConfig {
-  transport: "stdio" | "websocket" | "http";
+  transport: "stdio" | "http" | "convex";
   host?: string;
   port?: number;
   path?: string;

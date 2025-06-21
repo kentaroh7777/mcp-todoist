@@ -59,7 +59,7 @@ export class ConvexMCPClient {
       await this.ensureAuthentication();
       
       // Create MCP session via Convex
-      this.sessionId = await this.convexMutation(api.mcp.createMCPSession, {
+      this.sessionId = await this.convexMutation({
         userId: this.userId as any,
         clientInfo: {
           name: 'mcp-todoist-web-ui',
@@ -96,7 +96,7 @@ export class ConvexMCPClient {
 
   disconnect(): void {
     if (this.sessionId && this.convexMutation) {
-      this.convexMutation(api.mcp.closeMCPSession, {
+      this.convexMutation({
         sessionId: this.sessionId as any
       }).catch(console.error);
     }
@@ -138,7 +138,12 @@ export class ConvexMCPClient {
       }
     };
 
-    const response = await this.convexAction(api.mcp.handleMCPRequest, {
+    console.log('[DEBUG] initialize sending params:', JSON.stringify({
+      sessionId: this.sessionId,
+      request
+    }, null, 2));
+
+    const response = await this.convexAction({
       sessionId: this.sessionId as any,
       request
     });
@@ -159,7 +164,8 @@ export class ConvexMCPClient {
   }
 
   async listTools(): Promise<MCPTool[]> {
-    return this.sendRequest('tools/list');
+    const result = await this.sendRequest('tools/list');
+    return result.tools;
   }
 
   async callTool(name: string, args: Record<string, any>): Promise<any> {
@@ -171,7 +177,8 @@ export class ConvexMCPClient {
   }
 
   async listResources(): Promise<MCPResource[]> {
-    return this.sendRequest('resources/list');
+    const result = await this.sendRequest('resources/list');
+    return result.resources;
   }
 
   async readResource(uri: string): Promise<MCPResourceContent> {
@@ -180,7 +187,8 @@ export class ConvexMCPClient {
   }
 
   async listPrompts(): Promise<MCPPrompt[]> {
-    return this.sendRequest('prompts/list');
+    const result = await this.sendRequest('prompts/list');
+    return result.prompts;
   }
 
   async getPrompt(name: string, args?: Record<string, any>): Promise<MCPPromptContent> {
@@ -202,15 +210,23 @@ export class ConvexMCPClient {
       params
     };
 
-    const response = await this.convexAction(api.mcp.handleMCPRequest, {
+    console.log('[DEBUG] sendRequest sending params:', JSON.stringify({
+      sessionId: this.sessionId,
+      request
+    }, null, 2));
+
+    const response = await this.convexAction({
       sessionId: this.sessionId as any,
       request
     });
+
+    console.log('[DEBUG] sendRequest raw response:', JSON.stringify(response, null, 2));
 
     if (response.error) {
       throw new Error(response.error.message);
     }
 
+    console.log('[DEBUG] sendRequest returning response.result:', JSON.stringify(response.result, null, 2));
     return response.result;
   }
 

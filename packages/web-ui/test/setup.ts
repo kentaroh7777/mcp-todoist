@@ -252,14 +252,13 @@ Object.defineProperty(window, 'matchMedia', {
   })),
 })
 
-// ResizeObserver モック
-class MockResizeObserver {
+class ResizeObserver {
   observe() {}
   unobserve() {}
   disconnect() {}
 }
 
-global.ResizeObserver = MockResizeObserver
+window.ResizeObserver = ResizeObserver;
 
 // IntersectionObserver モック
 class MockIntersectionObserver {

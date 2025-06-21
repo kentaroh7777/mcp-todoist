@@ -15,13 +15,13 @@ import Collapse from 'antd/es/collapse';
 import Switch from 'antd/es/switch';
 import Typography from 'antd/es/typography';
 import { useExtendedConvexMCPClient } from '@/lib/mcp/extended-convex-client';
-import type { MCPTool, MCPResource, MCPPrompt, MCPMessage, JSONSchema } from '@/types/mcp';
+import type { MCPTool, MCPResource, MCPPrompt, JSONSchema } from '@/types/mcp';
 
 const { Content } = Layout;
 const { Panel } = Collapse;
 const { Text, Paragraph } = Typography;
 
-interface MCPMessage {
+interface MCPLogMessage {
   id: string;
   timestamp: number;
   direction: 'sent' | 'received';
@@ -43,7 +43,8 @@ interface MCPTesterState {
   tools: MCPTool[];
   resources: MCPResource[];
   prompts: MCPPrompt[];
-  messages: MCPMessage[];
+  messages: MCPLogMessage[];
+  connectionMessage?: string;
 }
 
 interface MCPTesterProps {
@@ -54,13 +55,13 @@ interface MCPTesterProps {
 
 // Message logger hook
 const useMessageLogger = (client: any) => {
-  const [messages, setMessages] = useState<MCPMessage[]>([]);
+  const [messages, setMessages] = useState<MCPLogMessage[]>([]);
 
   useEffect(() => {
     if (!client) return;
 
     const handleMessage = (direction: 'sent' | 'received', data: any) => {
-      const message: MCPMessage = {
+      const message: MCPLogMessage = {
         id: crypto.randomUUID(),
         timestamp: Date.now(),
         direction,
@@ -242,115 +243,143 @@ interface SectionProps {
 }
 
 function ConnectionSection({ state, setState, client, onConnectionChange }: SectionProps) {
-  const [validationError, setValidationError] = useState<string>('');
-  const [connectionError, setConnectionError] = useState<string>('');
-
+  const [form] = Form.useForm();
+  
   const validateUrl = (url: string): boolean => {
-    const wsPattern = /^wss?:\/\/.+/;
-    const httpPattern = /^https?:\/\/.+/;
-    return wsPattern.test(url) || httpPattern.test(url);
+    // ExtendedConvexMCPClientではURL入力は不要（Convex経由で接続）
+    return true;
   };
 
-  const handleConnect = useCallback(async () => {
-    if (!state.serverUrl.trim()) {
-      setValidationError('URLを入力してください');
-      return;
-    }
+  const handleConnect = async () => {
+    console.log('[MCPTester] handleConnect called');
+    console.log('[MCPTester] client:', client);
+    console.log('[MCPTester] current state:', state.connectionState);
     
-    if (!validateUrl(state.serverUrl)) {
-      setValidationError('有効なWebSocket URLを入力してください');
-      return;
-    }
-    
-    setValidationError('');
-    setConnectionError('');
-    setState(prev => ({ ...prev, connectionState: 'connecting' }));
+    setState(prev => ({ 
+      ...prev, 
+      connectionState: 'connecting' as const,
+      connectionMessage: 'Convex経由でMCPサーバーに接続中...'
+    }));
     
     try {
-      await client.connect(state.serverUrl);
+      console.log('[MCPTester] Calling client.connect...');
+      // ExtendedConvexMCPClientはURLを使用せず、Convex経由で接続
+      await client.connect('convex://mcp');
+      console.log('[MCPTester] client.connect successful');
+      
+      console.log('[MCPTester] Calling client.initialize...');
       await client.initialize();
+      console.log('[MCPTester] client.initialize successful');
+      
+      console.log('[MCPTester] Fetching tools, resources, prompts...');
+      // ツール、リソース、プロンプトを取得
+      const [tools, resources, prompts] = await Promise.all([
+        client.listTools().catch((e: any) => { console.error('[MCPTester] listTools error:', e); return []; }),
+        client.listResources().catch((e: any) => { console.error('[MCPTester] listResources error:', e); return []; }),
+        client.listPrompts().catch((e: any) => { console.error('[MCPTester] listPrompts error:', e); return []; })
+      ]);
+      
+      console.log('[MCPTester] Fetched:', { tools, resources, prompts });
+      
       setState(prev => ({ 
         ...prev, 
-        connectionState: 'connected',
-        client 
+        connectionState: 'connected' as const,
+        connectionMessage: 'MCP サーバーへの接続が完了しました。ツール、リソース、プロンプトが利用可能です。',
+        tools, 
+        resources, 
+        prompts 
       }));
+      
+      console.log('[MCPTester] Connection successful, calling onConnectionChange...');
       onConnectionChange?.(true);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      console.error('[MCPTester] Connection failed:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       setState(prev => ({ 
         ...prev, 
-        connectionState: 'error'
+        connectionState: 'error' as const,
+        connectionMessage: `接続エラー: ${errorMessage}`
       }));
-      const errorMessage = error?.message || 'Connection failed';
-      setConnectionError(errorMessage);
-      console.error('Connection failed:', error);
+      onConnectionChange?.(false);
     }
-  }, [state.serverUrl, client, setState, onConnectionChange]);
+  };
 
-  const handleDisconnect = useCallback(() => {
+  const handleDisconnect = () => {
     client.disconnect();
     setState(prev => ({ 
       ...prev, 
-      connectionState: 'disconnected',
-      tools: [],
-      resources: [],
-      prompts: [],
-      messages: []
+      connectionState: 'disconnected' as const,
+      connectionMessage: 'MCP サーバーから切断されました。',
+      tools: [], 
+      resources: [], 
+      prompts: [] 
     }));
     onConnectionChange?.(false);
-  }, [client, setState, onConnectionChange]);
+  };
+
+  const getStatusBadge = () => {
+    switch (state.connectionState) {
+      case 'connected': return <Badge status="success" text="接続済み" />;
+      case 'connecting': return <Badge status="processing" text="接続中" />;
+      case 'error': return <Badge status="error" text="エラー" />;
+      default: return <Badge status="default" text="未接続" />;
+    }
+  };
 
   return (
-    <div data-testid="connection-section" className="space-y-4">
-      <div>
-        <Input 
-          data-testid="server-url-input"
-          placeholder="ws://localhost:8080/mcp"
-          value={state.serverUrl}
-          onChange={e => {
-            setState(prev => ({ 
-              ...prev, 
-              serverUrl: e.target.value 
-            }));
-            if (validationError) setValidationError('');
-            if (connectionError) setConnectionError('');
-          }}
-          status={validationError ? 'error' : ''}
-        />
-        {validationError && (
-          <div className="text-red-500 text-sm mt-1">{validationError}</div>
-        )}
-        {connectionError && (
-          <div className="text-red-500 text-sm mt-1">{connectionError}</div>
-        )}
-      </div>
-      
-      <div className="space-x-2">
-        <Button 
-          data-testid="connect-button"
-          type="primary"
-          onClick={handleConnect}
-          loading={state.connectionState === 'connecting'}
-          disabled={state.connectionState === 'connected'}
-        >
-          {state.connectionState === 'connecting' ? 'Loading...' : '接続'}
-        </Button>
+    <Card title="接続管理" size="small">
+      <Space direction="vertical" style={{ width: '100%' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          {getStatusBadge()}
+          <Text type="secondary">Convex MCP サーバー</Text>
+        </div>
         
-        <Button 
-          data-testid="disconnect-button"
-          onClick={handleDisconnect}
-          disabled={state.connectionState !== 'connected'}
-        >
-          切断
-        </Button>
+        {state.connectionMessage && (
+          <Alert 
+            message={state.connectionMessage}
+            type={state.connectionState === 'connected' ? 'success' : state.connectionState === 'error' ? 'error' : 'info'}
+            showIcon 
+            closable
+            onClose={() => setState(prev => ({ ...prev, connectionMessage: undefined }))}
+          />
+        )}
         
-        <Badge
-          data-testid="connection-status"
-          status={state.connectionState === 'connected' ? 'success' : 'default'}
-          text={state.connectionState === 'connected' ? '接続済み' : '未接続'}
-          className={state.connectionState === 'connected' ? 'badge-success' : ''}
-        />
-      </div>
-    </div>
+        <div>
+          <Input
+            value="Convex MCP Server (自動設定)"
+            disabled
+            placeholder="Convex経由でMCPサーバーに接続します"
+            style={{ marginBottom: 12 }}
+          />
+          
+          <Space>
+            {state.connectionState === 'connected' ? (
+              <Button 
+                type="primary" 
+                danger 
+                onClick={() => {
+                  console.log('[MCPTester] Disconnect button clicked');
+                  handleDisconnect();
+                }}
+              >
+                切断
+              </Button>
+            ) : (
+              <Button 
+                type="primary" 
+                onClick={() => {
+                  console.log('[MCPTester] Connect button clicked');
+                  handleConnect();
+                }}
+                loading={state.connectionState === 'connecting'}
+              >
+                接続
+              </Button>
+            )}
+          </Space>
+        </div>
+      </Space>
+    </Card>
   );
 }
 
@@ -379,31 +408,19 @@ function ToolsSection({ state, setState, client }: SectionProps) {
   };
 
   const handleExecuteTool = async () => {
-    if (!selectedTool || !selectedToolData) return;
+    if (!selectedTool || !client) return;
+    
+    setToolResult(null);
+    setLoading(true);
     
     try {
-      setLoading(true);
       const formValues = await form.validateFields();
-      
-      // Process form values for arrays and objects
-      const processedValues: Record<string, any> = {};
-      Object.entries(formValues).forEach(([key, value]) => {
-        if (typeof value === 'string' && (value.startsWith('[') || value.startsWith('{'))) {
-          try {
-            processedValues[key] = JSON.parse(value);
-          } catch {
-            processedValues[key] = value;
-          }
-        } else {
-          processedValues[key] = value;
-        }
-      });
-      
-      const result = await client.callTool(selectedTool, processedValues);
+      const result = await client.callTool(selectedTool, formValues);
       setToolResult(result);
-    } catch (error: any) {
-      console.error('Tool execution failed:', error);
-      setToolResult({ error: error?.message || 'ツール実行エラー' });
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorData = error instanceof Error && (error as any).data ? (error as any).data : undefined;
+      setToolResult({ error: errorMessage, data: errorData });
     } finally {
       setLoading(false);
     }
@@ -451,7 +468,24 @@ function ToolsSection({ state, setState, client }: SectionProps) {
       {toolResult && (
         <Card data-testid="tool-result-display" title="実行結果" className="mt-4">
           {toolResult.error ? (
-            <Alert message="エラー" description={toolResult.error} type="error" />
+            <Alert 
+              message="ツール実行エラー" 
+              description={
+                <div>
+                  <div><strong>エラー内容:</strong> {toolResult.error}</div>
+                  {toolResult.data && (
+                    <details className="mt-2">
+                      <summary className="cursor-pointer text-blue-600">詳細情報を表示</summary>
+                      <pre className="mt-2 p-2 bg-gray-100 rounded text-xs overflow-auto">
+                        {JSON.stringify(toolResult.data, null, 2)}
+                      </pre>
+                    </details>
+                  )}
+                </div>
+              }
+              type="error" 
+              showIcon
+            />
           ) : (
             <JSONDisplay data={toolResult} />
           )}
@@ -490,9 +524,11 @@ function ResourcesSection({ state, setState, client }: SectionProps) {
       setLoading(true);
       const content = await client.readResource(uri);
       setResourceContent(content);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Failed to read resource:', error);
-      setResourceContent({ error: error.message });
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorData = error instanceof Error && (error as any).data ? (error as any).data : undefined;
+      setResourceContent({ error: errorMessage, data: errorData });
     } finally {
       setLoading(false);
     }
@@ -533,7 +569,24 @@ function ResourcesSection({ state, setState, client }: SectionProps) {
         {resourceContent && (
           <Card title="リソース内容">
             {resourceContent.error ? (
-              <Alert message="エラー" description={resourceContent.error} type="error" />
+              <Alert 
+                message="リソース読み込みエラー" 
+                description={
+                  <div>
+                    <div><strong>エラー内容:</strong> {resourceContent.error}</div>
+                    {resourceContent.data && (
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-blue-600">詳細情報を表示</summary>
+                        <pre className="mt-2 p-2 bg-gray-100 rounded text-xs overflow-auto">
+                          {JSON.stringify(resourceContent.data, null, 2)}
+                        </pre>
+                      </details>
+                    )}
+                  </div>
+                }
+                type="error" 
+                showIcon
+              />
             ) : (
               <div>
                 {resourceContent.text ? (
@@ -614,7 +667,7 @@ function PromptsSection({ state, setState, client }: SectionProps) {
       try {
         const template = await client.getPrompt(promptName, {});
         setPromptTemplate(template);
-      } catch (error) {
+      } catch (error: unknown) {
         console.error('Failed to load prompt template:', error);
       }
     }
@@ -629,9 +682,11 @@ function PromptsSection({ state, setState, client }: SectionProps) {
       
       const result = await client.getPrompt(selectedPrompt, formValues);
       setPromptResult(result);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Prompt execution failed:', error);
-      setPromptResult({ error: error.message });
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorData = error instanceof Error && (error as any).data ? (error as any).data : undefined;
+      setPromptResult({ error: errorMessage, data: errorData });
     } finally {
       setLoading(false);
     }
@@ -728,7 +783,24 @@ function PromptsSection({ state, setState, client }: SectionProps) {
         {promptResult && (
           <Card title="プロンプト結果">
             {promptResult.error ? (
-              <Alert message="エラー" description={promptResult.error} type="error" />
+              <Alert 
+                message="プロンプト実行エラー" 
+                description={
+                  <div>
+                    <div><strong>エラー内容:</strong> {promptResult.error}</div>
+                    {promptResult.data && (
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-blue-600">詳細情報を表示</summary>
+                        <pre className="mt-2 p-2 bg-gray-100 rounded text-xs overflow-auto">
+                          {JSON.stringify(promptResult.data, null, 2)}
+                        </pre>
+                      </details>
+                    )}
+                  </div>
+                }
+                type="error" 
+                showIcon
+              />
             ) : promptResult.messages ? (
               <div className="space-y-3">
                 {promptResult.messages.map((message: any, index: number) => (
@@ -861,7 +933,7 @@ function DebugSection({ state, setState, client }: SectionProps) {
 
 export default function MCPTester({
   skipAuth = true,
-  initialServerUrl = 'http://localhost:3001',
+  initialServerUrl = 'convex://mcp',
   onConnectionChange
 }: MCPTesterProps) {
   const [state, setState] = useState<MCPTesterState>({
@@ -878,7 +950,11 @@ export default function MCPTester({
     testUserId: 'test-user'
   });
 
+  console.log('[MCPTester] Client created:', client);
+  console.log('[MCPTester] Skip auth:', skipAuth);
+
   useEffect(() => {
+    console.log('[MCPTester] Setting client in state:', client);
     setState(prev => ({ ...prev, client }));
   }, [client]);
 
@@ -891,16 +967,19 @@ export default function MCPTester({
     {
       key: 'tools',
       label: 'ツール',
+      disabled: state.connectionState !== 'connected',
       children: <ToolsSection state={state} setState={setState} client={client} />,
     },
     {
       key: 'resources',
-      label: 'リソース', 
+      label: 'リソース',
+      disabled: state.connectionState !== 'connected',
       children: <ResourcesSection state={state} setState={setState} client={client} />,
     },
     {
       key: 'prompts',
       label: 'プロンプト',
+      disabled: state.connectionState !== 'connected',
       children: <PromptsSection state={state} setState={setState} client={client} />,
     },
     {

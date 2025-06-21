@@ -101,6 +101,45 @@ export class MCPProtocolHandler {
                   type: 'object',
                   properties: {}
                 }
+              },
+              {
+                name: 'todoist_create_project',
+                description: 'Create a new project in Todoist',
+                inputSchema: {
+                  type: 'object',
+                  properties: {
+                    name: { type: 'string', description: 'Project name' },
+                    color: { type: 'string', description: 'Project color' },
+                    parent_id: { type: 'string', description: 'Parent project ID' },
+                    is_favorite: { type: 'boolean', description: 'Whether the project is a favorite' }
+                  },
+                  required: ['name']
+                }
+              },
+              {
+                name: 'todoist_update_project',
+                description: 'Update an existing project in Todoist',
+                inputSchema: {
+                  type: 'object',
+                  properties: {
+                    project_id: { type: 'string', description: 'Project ID' },
+                    name: { type: 'string', description: 'Project name' },
+                    color: { type: 'string', description: 'Project color' },
+                    is_favorite: { type: 'boolean', description: 'Whether the project is a favorite' }
+                  },
+                  required: ['project_id']
+                }
+              },
+              {
+                name: 'todoist_delete_project',
+                description: 'Delete a project in Todoist',
+                inputSchema: {
+                  type: 'object',
+                  properties: {
+                    project_id: { type: 'string', description: 'Project ID to delete' }
+                  },
+                  required: ['project_id']
+                }
               }
             ]
           })
@@ -235,6 +274,39 @@ export class MCPProtocolHandler {
             ]
           })
 
+        case 'todoist_create_project':
+          const newProject = await this.todoistClient.createProject(args)
+          return this.createResponse(requestId, {
+            content: [
+              {
+                type: 'text',
+                text: `Project created successfully: ${newProject.name} (ID: ${newProject.id})`
+              }
+            ]
+          })
+
+        case 'todoist_update_project':
+          const updatedProject = await this.todoistClient.updateProject(args.project_id, args)
+          return this.createResponse(requestId, {
+            content: [
+              {
+                type: 'text',
+                text: `Project updated successfully: ${updatedProject.name} (ID: ${updatedProject.id})`
+              }
+            ]
+          })
+
+        case 'todoist_delete_project':
+          await this.todoistClient.deleteProject(args.project_id)
+          return this.createResponse(requestId, {
+            content: [
+              {
+                type: 'text',
+                text: `Project ${args.project_id} deleted`
+              }
+            ]
+          })
+
         default:
           return this.createErrorResponse(requestId, {
             code: -32601,
@@ -242,9 +314,15 @@ export class MCPProtocolHandler {
           })
       }
     } catch (error) {
+      console.error(`[MCP Handler] Tool execution failed for ${toolName}:`, error);
       return this.createErrorResponse(requestId, {
         code: -32603,
-        message: `Tool execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+        message: `Tool execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        data: {
+          toolName,
+          args: JSON.stringify(args),
+          errorType: error instanceof Error ? error.constructor.name : typeof error
+        }
       })
     }
   }

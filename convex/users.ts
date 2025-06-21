@@ -27,6 +27,7 @@ export const create = mutation({
     todoistApiToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    console.log('[DEBUG] users.create called with args:', JSON.stringify(args, null, 2));
     const now = Date.now();
     
     // Check if user already exists

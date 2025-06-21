@@ -15,7 +15,6 @@ interface ExtendedConvexMCPClientConfig extends MCPClientConfig {
 // 拡張クライアント実装
 export class ExtendedConvexMCPClient extends ConvexMCPClient {
   private extendedConfig: ExtendedConvexMCPClientConfig;
-  protected userId: string | null = null;
   
   constructor(config: ExtendedConvexMCPClientConfig = {}) {
     super(config);
@@ -26,122 +25,181 @@ export class ExtendedConvexMCPClient extends ConvexMCPClient {
     };
   }
   
+  // Override connect method to handle test users
+  async connect(serverUrl: string): Promise<void> {
+    console.log('[ExtendedConvexMCPClient] connect called with:', serverUrl);
+    console.log('[ExtendedConvexMCPClient] skipAuthentication:', this.extendedConfig.skipAuthentication);
+    
+    if (this.extendedConfig.skipAuthentication) {
+      // For test mode, directly create session without Firebase auth
+      await this.connectWithTestUser();
+    } else {
+      // Use parent class connect method for real auth
+      await super.connect(serverUrl);
+    }
+  }
+
+  private async connectWithTestUser(): Promise<void> {
+    console.log('[ExtendedConvexMCPClient] connectWithTestUser called');
+    
+    try {
+      const testUserId = this.extendedConfig.testUserId || 'test-user';
+      console.log('[ExtendedConvexMCPClient] Using test user:', testUserId);
+
+      // Get Convex hooks from parent class
+      const mutationFn = (this as any).convexMutation;
+      console.log('[ExtendedConvexMCPClient] Convex mutation function available:', !!mutationFn);
+      
+      if (!mutationFn) {
+        const error = new Error('Convex hooks not initialized. Call initializeConvexHooks first.');
+        console.error('[ExtendedConvexMCPClient]', error.message);
+        throw error;
+      }
+
+      console.log('[ExtendedConvexMCPClient] Creating MCP session...');
+      
+      // Debug: Log parameters before sending
+      const sessionParams = {
+        userId: testUserId,
+        clientInfo: {
+          name: 'mcp-todoist-web-ui',
+          version: '1.0.0'
+        }
+      };
+      console.log('[DEBUG] ExtendedConvexMCPClient sending params:', JSON.stringify(sessionParams, null, 2));
+      console.log('[DEBUG] api.mcp.createMCPSession reference:', api.mcp.createMCPSession);
+      console.log('[DEBUG] convexMutation function type:', typeof mutationFn);
+      
+      // Use the mutation function correctly - useMutation returns a function that takes parameters
+      console.log('[DEBUG] Calling mutation function with parameters...');
+      const sessionId = await mutationFn(sessionParams);
+      
+      console.log('[ExtendedConvexMCPClient] Session created:', sessionId);
+      
+      // Set internal connection state
+      (this as any).sessionId = sessionId;
+      (this as any).connected = true;
+      (this as any).connectionState = 'connected';
+      
+      console.log('[ExtendedConvexMCPClient] Connection state updated');
+      
+    } catch (error: any) {
+      console.error('[ExtendedConvexMCPClient] Connection failed:', error);
+      (this as any).connected = false;
+      (this as any).connectionState = 'disconnected';
+      throw error;
+    }
+  }
+
+  // Remove all the emit calls and other problematic overrides
+
   // Override public methods to emit events for logging
   async listTools(): Promise<any> {
-    this.emitRequest('tools/list');
+    if (this.extendedConfig.enableLogging) {
+      console.log('ExtendedConvexMCPClient: listTools called');
+    }
     try {
       const result = await super.listTools();
-      this.emitResponse('tools/list', result);
+      if (this.extendedConfig.enableLogging) {
+        console.log('ExtendedConvexMCPClient: listTools result:', result);
+      }
       return result;
     } catch (error: any) {
-      this.emitError('tools/list', error);
+      if (this.extendedConfig.enableLogging) {
+        console.error('ExtendedConvexMCPClient: listTools error:', error);
+      }
       throw error;
     }
   }
 
   async callTool(name: string, args: Record<string, any>): Promise<any> {
-    this.emitRequest('tools/call', { name, arguments: args });
+    if (this.extendedConfig.enableLogging) {
+      console.log('ExtendedConvexMCPClient: callTool called:', name, args);
+    }
     try {
       const result = await super.callTool(name, args);
-      this.emitResponse('tools/call', result);
+      if (this.extendedConfig.enableLogging) {
+        console.log('ExtendedConvexMCPClient: callTool result:', result);
+      }
       return result;
     } catch (error: any) {
-      this.emitError('tools/call', error);
+      if (this.extendedConfig.enableLogging) {
+        console.error('ExtendedConvexMCPClient: callTool error:', error);
+      }
       throw error;
     }
   }
 
   async listResources(): Promise<any> {
-    this.emitRequest('resources/list');
+    if (this.extendedConfig.enableLogging) {
+      console.log('ExtendedConvexMCPClient: listResources called');
+    }
     try {
       const result = await super.listResources();
-      this.emitResponse('resources/list', result);
+      if (this.extendedConfig.enableLogging) {
+        console.log('ExtendedConvexMCPClient: listResources result:', result);
+      }
       return result;
     } catch (error: any) {
-      this.emitError('resources/list', error);
+      if (this.extendedConfig.enableLogging) {
+        console.error('ExtendedConvexMCPClient: listResources error:', error);
+      }
       throw error;
     }
   }
 
   async readResource(uri: string): Promise<any> {
-    this.emitRequest('resources/read', { uri });
+    if (this.extendedConfig.enableLogging) {
+      console.log('ExtendedConvexMCPClient: readResource called:', uri);
+    }
     try {
       const result = await super.readResource(uri);
-      this.emitResponse('resources/read', result);
+      if (this.extendedConfig.enableLogging) {
+        console.log('ExtendedConvexMCPClient: readResource result:', result);
+      }
       return result;
     } catch (error: any) {
-      this.emitError('resources/read', error);
+      if (this.extendedConfig.enableLogging) {
+        console.error('ExtendedConvexMCPClient: readResource error:', error);
+      }
       throw error;
     }
   }
 
   async listPrompts(): Promise<any> {
-    this.emitRequest('prompts/list');
+    if (this.extendedConfig.enableLogging) {
+      console.log('ExtendedConvexMCPClient: listPrompts called');
+    }
     try {
       const result = await super.listPrompts();
-      this.emitResponse('prompts/list', result);
+      if (this.extendedConfig.enableLogging) {
+        console.log('ExtendedConvexMCPClient: listPrompts result:', result);
+      }
       return result;
     } catch (error: any) {
-      this.emitError('prompts/list', error);
+      if (this.extendedConfig.enableLogging) {
+        console.error('ExtendedConvexMCPClient: listPrompts error:', error);
+      }
       throw error;
     }
   }
 
   async getPrompt(name: string, args?: Record<string, any>): Promise<any> {
-    this.emitRequest('prompts/get', { name, arguments: args });
+    if (this.extendedConfig.enableLogging) {
+      console.log('ExtendedConvexMCPClient: getPrompt called:', name, args);
+    }
     try {
       const result = await super.getPrompt(name, args);
-      this.emitResponse('prompts/get', result);
+      if (this.extendedConfig.enableLogging) {
+        console.log('ExtendedConvexMCPClient: getPrompt result:', result);
+      }
       return result;
     } catch (error: any) {
-      this.emitError('prompts/get', error);
+      if (this.extendedConfig.enableLogging) {
+        console.error('ExtendedConvexMCPClient: getPrompt error:', error);
+      }
       throw error;
     }
-  }
-
-  private emitRequest(method: string, params?: any) {
-    const request = {
-      jsonrpc: '2.0' as const,
-      id: Date.now(),
-      method,
-      params
-    };
-    this.emit('request', request);
-  }
-
-  private emitResponse(method: string, result: any) {
-    this.emit('response', {
-      jsonrpc: '2.0' as const,
-      id: Date.now(),
-      result
-    });
-  }
-
-  private emitError(method: string, error: any) {
-    this.emit('response', {
-      jsonrpc: '2.0' as const,
-      id: Date.now(),
-      error: {
-        code: -1,
-        message: error.message
-      }
-    });
-  }
-  
-  protected async ensureAuthentication(): Promise<void> {
-    if (this.extendedConfig.skipAuthentication) {
-      // 認証をスキップしてテストユーザーIDを設定
-      this.userId = this.extendedConfig.testUserId || 'test-user';
-      
-      if (this.extendedConfig.enableLogging) {
-        console.log('ExtendedConvexMCPClient: Authentication skipped, using test user:', this.userId);
-      }
-      
-      return;
-    }
-    
-    // 通常の認証フロー（Firebase）
-    return super.ensureAuthentication();
   }
 }
 
@@ -160,13 +218,20 @@ export function useExtendedConvexMCPClient(
   const convexMutation = useMutation(api.mcp.createMCPSession);
   const convexQuery = useQuery;
   
+  console.log('[useExtendedConvexMCPClient] Hook called with config:', config);
+  console.log('[useExtendedConvexMCPClient] convexAction available:', !!convexAction);
+  console.log('[useExtendedConvexMCPClient] convexMutation available:', !!convexMutation);
+  console.log('[useExtendedConvexMCPClient] convexQuery available:', !!convexQuery);
+  
   const client = useMemo(() => {
+    console.log('[useExtendedConvexMCPClient] Creating new client instance');
     const extendedClient = new ExtendedConvexMCPClient({
       skipAuthentication: config.skipAuthentication ?? true,
       testUserId: config.testUserId ?? 'test-user',
       enableLogging: true
     });
     
+    console.log('[useExtendedConvexMCPClient] Client created, initializing Convex hooks');
     // Convex hooks を初期化
     extendedClient.initializeConvexHooks({
       action: convexAction,
@@ -174,9 +239,11 @@ export function useExtendedConvexMCPClient(
       query: convexQuery
     });
     
+    console.log('[useExtendedConvexMCPClient] Client fully configured');
     return extendedClient;
   }, [config.skipAuthentication, config.testUserId, convexAction, convexMutation, convexQuery]);
   
+  console.log('[useExtendedConvexMCPClient] Returning client:', client);
   return client;
 }
 

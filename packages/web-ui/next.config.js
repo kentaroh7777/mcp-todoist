@@ -1,13 +1,18 @@
-const path = require('path')
+import path from 'path';
+import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // ルートディレクトリの環境変数を読み込み
-require('dotenv').config({ 
+dotenv.config({ 
   path: path.resolve(__dirname, '../../.env') 
-})
+});
 
-console.log('Loaded environment variables:')
-console.log('NEXT_PUBLIC_CONVEX_URL:', process.env.NEXT_PUBLIC_CONVEX_URL)
-console.log('CONVEX_DEPLOYMENT:', process.env.CONVEX_DEPLOYMENT)
+console.log('Loaded environment variables:');
+console.log('NEXT_PUBLIC_CONVEX_URL:', process.env.NEXT_PUBLIC_CONVEX_URL);
+console.log('CONVEX_DEPLOYMENT:', process.env.CONVEX_DEPLOYMENT);
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -33,7 +38,7 @@ const nextConfig = {
       'node:https': false,
       'node:util': false,
       'node:url': false
-    }
+    };
     
     // クライアントサイドのポリフィル
     if (!isServer) {
@@ -51,11 +56,11 @@ const nextConfig = {
         buffer: false,
         // undiciを完全に無効化
         undici: false
-      }
+      };
     }
     
-    return config
+    return config;
   }
-}
+};
 
-module.exports = nextConfig 
+export default nextConfig; 

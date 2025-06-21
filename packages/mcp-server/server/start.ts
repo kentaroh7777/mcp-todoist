@@ -1,7 +1,7 @@
 import { MCPServer } from './index'
 
 const server = new MCPServer()
-const PORT = process.env.MCP_SERVER_PORT || 3001
+const PORT = process.env.MCP_SERVER_PORT || 4000
 
 server.getApp().listen(PORT, () => {
   console.log(`🚀 MCP Server running on http://localhost:${PORT}`)

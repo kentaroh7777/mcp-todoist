@@ -76,4 +76,10 @@ export default defineSchema({
     syncToken: v.optional(v.string()),
     isEnabled: v.boolean(),
   }).index("by_user", ["userId"]),
+
+  messages: defineTable({
+    message: v.string(),
+    author: v.string(),
+    createdAt: v.number(),
+  }),
 }); 

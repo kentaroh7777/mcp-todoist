@@ -110,7 +110,7 @@ export const SignInForm: React.FC<SignInFormProps> = ({
               disabled={loading}
               block
             >
-              Don't have an account? Sign Up
+              Don&apos;t have an account? Sign Up
             </Button>
           </Form.Item>
         )}
