@@ -1,51 +1,50 @@
 #!/usr/bin/env tsx
 
-import { spawn, ChildProcess } from 'child_process';
-import { join } from 'path';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
+import { MCPProtocolHandler } from '../packages/mcp-server/dist/index.js'
+import * as readline from 'readline'
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const projectRoot = join(__dirname, '..');
+// 環境変数からTodoist APIトークンを取得
+const todoistApiToken = process.env.TODOIST_API_TOKEN || '61dae250699e84eb85b9c2ab9461c0581873566d'
 
-console.log('🚀 MCPサーバーを起動しています...');
+// MCPハンドラーを初期化
+const handler = new MCPProtocolHandler(todoistApiToken)
 
-// 環境変数の設定
-const env: NodeJS.ProcessEnv = {
-  ...process.env,
-  TODOIST_API_TOKEN: process.env.TODOIST_API_TOKEN || '61dae250699e84eb85b9c2ab9461c0581873566d',
-  MCP_SERVER_PORT: process.env.MCP_SERVER_PORT || '4000'
-};
+// stdinからのJSONRPCメッセージを処理
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout,
+  terminal: false
+})
 
-// MCPサーバーの起動
-const mcpServer: ChildProcess = spawn('npm', ['run', 'dev'], {
-  cwd: join(projectRoot, 'packages/mcp-server'),
-  env,
-  stdio: 'inherit'
-});
-
-mcpServer.on('close', (code: number | null) => {
-  console.log(`📤 MCPサーバーが終了しました (コード: ${code})`);
-  process.exit(code || 0);
-});
-
-mcpServer.on('error', (error: Error) => {
-  console.error('❌ MCPサーバーの起動に失敗:', error);
-  process.exit(1);
-});
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('📤 MCPサーバーを停止しています...');
-  if (mcpServer.pid) {
-    mcpServer.kill('SIGTERM');
+// 各行をJSONRPCリクエストとして処理
+rl.on('line', async (line: string) => {
+  try {
+    const request = JSON.parse(line.trim())
+    const response = await handler.handleRequest(request)
+    
+    // レスポンスをstdoutに送信
+    console.log(JSON.stringify(response))
+  } catch (error) {
+    // エラーレスポンスを送信
+    const errorResponse = {
+      jsonrpc: '2.0',
+      id: null,
+      error: {
+        code: -32700,
+        message: 'Parse error'
+      }
+    }
+    console.log(JSON.stringify(errorResponse))
   }
-});
+})
 
+// プロセス終了時のクリーンアップ
 process.on('SIGINT', () => {
-  console.log('📤 MCPサーバーを停止しています...');
-  if (mcpServer.pid) {
-    mcpServer.kill('SIGINT');
-  }
-}); 
+  rl.close()
+  process.exit(0)
+})
+
+process.on('SIGTERM', () => {
+  rl.close()
+  process.exit(0)
+}) 

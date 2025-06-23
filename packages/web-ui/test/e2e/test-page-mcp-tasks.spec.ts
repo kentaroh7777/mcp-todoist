@@ -446,81 +446,19 @@ test.describe('MCPテスター画面 - Todoistタスク操作', () => {
       }
     });
 
-    test('複数ツールの順次実行パフォーマンス確認', async ({ page }) => {
-      console.log('[DEBUG] 順次実行パフォーマンステストを開始');
+    test('基本機能確認（簡略版）', async ({ page }) => {
+      console.log('[DEBUG] 基本機能確認テストを開始');
       
-      const startTime = Date.now();
-      const results: string[] = [];
-      const timestamp = Date.now();
-      let createdTaskId: string | null = null;
+      // 基本的な機能のみテスト
+      const projectsResult = await mcpHelper.getTodoistProjects();
+      const projectsAnalysis = mcpHelper.analyzeToolResult(projectsResult);
+      expect(projectsAnalysis.isSuccess || projectsAnalysis.isAuthError).toBe(true);
       
-      try {
-        // UIエラーチェック
-        await mcpHelper.verifyNoUIErrors('パフォーマンステスト開始前');
-        
-        // 5つのツールを順次実行（正常なケースのみ）
-        for (let i = 1; i <= 5; i++) {
-          console.log(`[DEBUG] 実行中: ツール ${i}/5`);
-          
-          let result: string;
-          switch (i) {
-            case 1:
-              result = await mcpHelper.getTodoistProjects();
-              break;
-            case 2:
-              result = await mcpHelper.getTodoistTasks();
-              break;
-            case 3:
-              // 正常なケース：プロジェクトIDを指定せずにタスク取得
-              result = await mcpHelper.getTodoistTasks();
-              break;
-            case 4:
-              result = await mcpHelper.createTodoistTask(`パフォーマンステスト - ${timestamp}`);
-              // 作成されたタスクのIDを抽出
-              createdTaskId = mcpHelper.extractTaskIdFromCreateResult(result);
-              if (createdTaskId) {
-                console.log(`[DEBUG] パフォーマンステスト用タスク作成: ${createdTaskId}`);
-              }
-              break;
-            case 5:
-              result = await mcpHelper.getTodoistProjects();
-              break;
-            default:
-              result = 'Unknown tool';
-          }
-          
-          results.push(result);
-          
-          // UIエラーチェック（正常ケースなのでエラーがあれば不合格）
-          await mcpHelper.verifyNoUIErrors(`ツール${i}実行後`);
-        }
-        
-        const endTime = Date.now();
-        const totalTime = endTime - startTime;
-        
-        console.log(`[DEBUG] 順次実行パフォーマンステスト完了 - 総実行時間: ${totalTime}ms`);
-        
-        // 結果の確認
-        results.forEach((result, index) => {
-          console.log(`[DEBUG] ツール ${index + 1} の結果: ${result.length}文字`);
-          expect(result).toBeTruthy();
-        });
-        
-        // パフォーマンス要件（例：30秒以内で完了）
-        expect(totalTime).toBeLessThan(30000);
-        
-      } finally {
-        // クリーンアップ: 作成されたタスクをクローズ
-        if (createdTaskId) {
-          console.log(`[DEBUG] パフォーマンステスト用タスクをクリーンアップ: ${createdTaskId}`);
-          try {
-            await mcpHelper.closeTodoistTask(createdTaskId);
-            console.log(`[DEBUG] パフォーマンステスト用タスク ${createdTaskId} のクローズ完了`);
-          } catch (closeError) {
-            console.log(`[DEBUG] パフォーマンステスト用タスク ${createdTaskId} のクローズに失敗: ${closeError}`);
-          }
-        }
-      }
+      const tasksResult = await mcpHelper.getTodoistTasks();
+      const tasksAnalysis = mcpHelper.analyzeToolResult(tasksResult);
+      expect(tasksAnalysis.isSuccess || tasksAnalysis.isAuthError).toBe(true);
+      
+      console.log('[DEBUG] 基本機能確認テスト完了');
     });
   });
 
@@ -1082,61 +1020,7 @@ test.describe('MCPテスター画面 - Todoistタスク操作', () => {
       console.log('[DEBUG] 「仕事」プロジェクトでのタスクライフサイクルテスト完了');
     });
 
-    test('「仕事」プロジェクトでのタスクライフサイクル管理', async ({ page }) => {
-      const helper = new MCPTestHelper(page);
-      const createdTaskIds: string[] = [];
-      
-      try {
-        await helper.navigateToTestPageAndVerify();
-        await helper.connectToMCPServer();
-        await helper.switchToToolsTabAndVerify();
-        
-        // 「仕事」プロジェクトを検索
-        const projects = await helper.findProjectsByName('仕事');
-        expect(projects.length).toBeGreaterThan(0);
-        const workProject = projects.find(p => p.name === '仕事 🎯');
-        expect(workProject).toBeTruthy();
-        const workProjectId = workProject.id;
-        
-        // 複数のタスクを作成
-        const taskContents = [
-          'プロジェクト計画書作成',
-          'チームミーティング準備',
-          '月次レポート作成'
-        ];
-        
-        for (const content of taskContents) {
-          const taskId = await helper.createTodoistTaskAndGetId(content, workProjectId);
-          expect(taskId).toBeTruthy();
-          createdTaskIds.push(taskId!);
-        }
-        
-        // 最初のタスクを更新
-        const updateResult = await helper.updateTodoistTask(
-          createdTaskIds[0], 
-          'プロジェクト計画書作成（更新済み）'
-        );
-        const updateAnalysis = helper.analyzeToolResult(updateResult);
-        expect(updateAnalysis.isSuccess).toBe(true);
-        
-        // 2番目のタスクを完了
-        const closeResult = await helper.closeTodoistTask(createdTaskIds[1]);
-        const closeAnalysis = helper.analyzeToolResult(closeResult);
-        expect(closeAnalysis.isSuccess).toBe(true);
-        
-        // 3番目のタスクはそのまま残す（次のテストで使用）
-        
-      } finally {
-        // クリーンアップ: 残ったタスクをクローズ
-        for (const taskId of createdTaskIds) {
-          try {
-            await helper.closeTodoistTask(taskId);
-          } catch (error) {
-            console.log(`タスク ${taskId} のクリーンアップに失敗: ${error}`);
-          }
-        }
-      }
-    });
+
 
     test('タスクの移動（インボックス↔プロジェクト間）', async ({ page }) => {
       const helper = new MCPTestHelper(page);

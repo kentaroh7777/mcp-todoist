@@ -137,28 +137,6 @@ MCPテスターで以下の機能をテストできます：
 }
 ```
 
-## ディレクトリ構造
-
-```
-mcp-todoist/
-├── convex/                 # Convexバックエンド
-│   ├── schema.ts          # データスキーマ
-│   ├── tasks.ts           # タスク関連関数
-│   └── projects.ts        # プロジェクト関連関数
-├── src/
-│   ├── app/               # Next.js App Router
-│   │   ├── api/mcp/       # MCP APIエンドポイント
-│   │   ├── layout.tsx     # ルートレイアウト
-│   │   └── page.tsx       # メインページ
-│   ├── lib/
-│   │   ├── mcp/           # MCP Server実装
-│   │   └── todoist/       # Todoist APIクライアント
-│   └── types/             # TypeScript型定義
-├── package.json
-├── convex.json
-└── next.config.js
-```
-
 ## 開発中の注意事項
 
 - 型エラーについて：Convexの生成ファイルが作成される前は一部型エラーが表示されますが、`npx convex dev`実行後に解決されます
