@@ -22,10 +22,13 @@
     "convex:deploy": "convex deploy"
   },
   "devDependencies": {
+    "convex": "^1.10.0",
     "turbo": "^1.10.0",
-    "typescript": "^5.4.0",
-    "convex": "^1.10.0"
+    "typescript": "^5.4.0"
   },
   "type": "module",
-  "main": "index.js"
+  "main": "index.js",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.13.0"
+  }
 }

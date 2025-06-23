@@ -4,8 +4,114 @@ import { Page, expect } from '@playwright/test';
  * MCP関連のテストヘルパー関数
  */
 export class MCPTestHelper {
+  private logs: string[] = [];
+  private errors: string[] = [];
+  private isLoggingInitialized = false;
   
   constructor(private page: Page) {}
+
+  /**
+   * ログ収集を初期化する
+   */
+  initializeLogging(): void {
+    if (this.isLoggingInitialized) {
+      return; // 既に初期化済み
+    }
+
+    // ログとエラーを初期化
+    this.logs = [];
+    this.errors = [];
+
+    // ブラウザコンソールログを収集
+    this.page.on('console', (msg) => {
+      const log = `[${msg.type()}] ${msg.text()}`;
+      this.logs.push(log);
+      console.log(`[DEBUG LOG] ${log}`);
+    });
+
+    // JavaScript エラーを収集
+    this.page.on('pageerror', (error) => {
+      const errorMsg = `[PAGE ERROR] ${error.message}`;
+      this.errors.push(errorMsg);
+      console.log(`[DEBUG ERROR] ${errorMsg}`);
+    });
+
+    // ネットワークエラーを収集
+    this.page.on('requestfailed', (request) => {
+      const failMsg = `[NETWORK FAIL] ${request.method()} ${request.url()} - ${request.failure()?.errorText}`;
+      this.errors.push(failMsg);
+      console.log(`[DEBUG NETWORK] ${failMsg}`);
+    });
+
+    this.isLoggingInitialized = true;
+    console.log('[HELPER] ログ収集が初期化されました');
+  }
+
+  /**
+   * 収集したログを出力する
+   */
+  outputLogs(maxLogs: number = 20): void {
+    console.log('\n[DEBUG] === 収集されたログ出力 ===');
+    console.log('[DEBUG] 収集したログ数:', this.logs.length);
+    console.log('[DEBUG] 収集したエラー数:', this.errors.length);
+    
+    // 最新のログを出力
+    const recentLogs = this.logs.slice(-maxLogs);
+    recentLogs.forEach((log, index) => {
+      console.log(`[DEBUG] Log ${index + 1}: ${log}`);
+    });
+    
+    // 全エラーを出力
+    this.errors.forEach((error, index) => {
+      console.log(`[DEBUG] Error ${index + 1}: ${error}`);
+    });
+    
+    console.log('[DEBUG] =========================\n');
+  }
+
+  /**
+   * 特定のキーワードでログをフィルタして出力する
+   */
+  outputFilteredLogs(keywords: string[], title: string = '関連ログ'): void {
+    const filteredLogs = this.logs.filter(log => 
+      keywords.some(keyword => log.toLowerCase().includes(keyword.toLowerCase()))
+    );
+    
+    console.log(`\n[DEBUG] === ${title} ===`);
+    filteredLogs.forEach((log, index) => {
+      console.log(`[DEBUG] ${title} ${index + 1}: ${log}`);
+    });
+    console.log('[DEBUG] =========================\n');
+  }
+
+  /**
+   * 接続関連のログを出力する
+   */
+  outputConnectionLogs(): void {
+    this.outputFilteredLogs(
+      ['connect', 'connection', 'MCP', 'session', 'mutation', 'DEBUG'],
+      '接続関連ログ'
+    );
+  }
+
+  /**
+   * エラー関連のログを出力する
+   */
+  outputErrorLogs(): void {
+    this.outputFilteredLogs(
+      ['error', 'ERROR', 'fail', 'FAIL', 'exception', 'Exception'],
+      'エラー関連ログ'
+    );
+  }
+
+  /**
+   * ログをクリアする
+   */
+  clearLogs(): void {
+    this.logs = [];
+    this.errors = [];
+    console.log('[HELPER] ログがクリアされました');
+  }
 
   /**
    * MCPテスターページの初期状態を確認する

@@ -72,7 +72,20 @@ export class ExtendedConvexMCPClient extends ConvexMCPClient {
       
       // Use the mutation function correctly - useMutation returns a function that takes parameters
       console.log('[DEBUG] Calling mutation function with parameters...');
-      const sessionId = await mutationFn(sessionParams);
+      
+      // Add detailed error catching
+      let sessionId;
+      try {
+        sessionId = await mutationFn(sessionParams);
+        console.log('[DEBUG] Mutation call successful, sessionId:', sessionId);
+      } catch (mutationError: any) {
+        console.error('[DEBUG] Mutation call failed:', mutationError);
+        console.error('[DEBUG] Mutation error name:', mutationError.name);
+        console.error('[DEBUG] Mutation error message:', mutationError.message);
+        console.error('[DEBUG] Mutation error stack:', mutationError.stack);
+        console.error('[DEBUG] Mutation error details:', mutationError.data || mutationError.details || 'No additional details');
+        throw new Error(`MCP connection failed: ${mutationError.message || 'Unknown mutation error'}`);
+      }
       
       console.log('[ExtendedConvexMCPClient] Session created:', sessionId);
       
