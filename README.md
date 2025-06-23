@@ -334,4 +334,37 @@ echo '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"todoist_cr
 - **Claude Desktop**: 設定ファイル `~/.config/claude/claude_desktop_config.json`
 - **その他のMCPクライアント**: stdio transportをサポートするクライアント
 
-設定方法は基本的に同じで、コマンドとパスを適切に指定するだけです。 
+設定方法は基本的に同じで、コマンドとパスを適切に指定するだけです。
+
+## 🌟 主な特徴
+
+- **🤖 AI統合**: Cursor AI、Claude Desktopなど複数のAIツールからTodoistを操作
+- **🚀 簡単セットアップ**: 3ステップで導入完了
+- **📋 高度なタスク管理**: AIアシスタントでGTD、タスク整理、プロジェクト管理が効率化
+- **🔄 リアルタイム同期**: Todoist APIと直接連携
+- **🛠️ 拡張可能**: オープンソースで自由にカスタマイズ
+- **💾 stdio transport**: 標準的なMCPプロトコル準拠
+
+## 📖 ライセンス
+
+MIT License - 詳細は [LICENSE](LICENSE) ファイルを参照
+
+## 🔗 リンク
+
+- **GitHub**: [https://github.com/kentaroh7777/mcp-todoist](https://github.com/kentaroh7777/mcp-todoist)
+- **MCP Protocol**: [https://modelcontextprotocol.io](https://modelcontextprotocol.io)
+- **Todoist API**: [https://developer.todoist.com](https://developer.todoist.com)
+
+## 🤝 コントリビューション
+
+プルリクエスト、イシュー報告、機能提案を歓迎します！
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+---
+
+**🎯 AIでタスク管理を革新しよう！** 
