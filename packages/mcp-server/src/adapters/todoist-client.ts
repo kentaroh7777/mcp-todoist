@@ -64,6 +64,7 @@ export class TodoistClient {
         
         if (error instanceof AxiosError && error.response) {
           const { status, data } = error.response;
+          console.error(`[TodoistClient] API Error - Status: ${status}, Data:`, JSON.stringify(data, null, 2));
           let message = 'Unknown error';
           let description = '';
 

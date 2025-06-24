@@ -65,6 +65,7 @@ export interface CreateTaskParams {
 export interface UpdateTaskParams {
   content?: string;
   description?: string;
+  project_id?: string;
   priority?: number;
   due_string?: string;
   due_date?: string;

@@ -1020,8 +1020,6 @@ test.describe('MCPテスター画面 - Todoistタスク操作', () => {
       console.log('[DEBUG] 「仕事」プロジェクトでのタスクライフサイクルテスト完了');
     });
 
-
-
     test('タスクの移動（インボックス↔プロジェクト間）', async ({ page }) => {
       const helper = new MCPTestHelper(page);
       let createdTaskId: string | null = null;
@@ -1032,8 +1030,20 @@ test.describe('MCPテスター画面 - Todoistタスク操作', () => {
         await helper.switchToToolsTabAndVerify();
         
         // インボックスにタスクを作成
-        createdTaskId = await helper.createTodoistTaskAndGetId('移動テスト用タスク');
+        const timestamp = Date.now();
+        const taskContent = `移動テスト用タスク - ${timestamp}`;
+        createdTaskId = await helper.createTodoistTaskAndGetId(taskContent);
         expect(createdTaskId).toBeTruthy();
+        
+        if (!createdTaskId) {
+          console.log('[DEBUG] タスク作成に失敗またはAPIトークン未設定、移動テストをスキップ');
+          return;
+        }
+        
+        // 作成直後のタスクがインボックスに存在することを確認
+        const initialLocationVerification = await helper.verifyTaskLocation(createdTaskId, 'inbox');
+        expect(initialLocationVerification.success).toBe(true);
+        console.log(`[DEBUG] 初期位置確認: ${initialLocationVerification.message}`);
         
         // 「仕事」プロジェクトを検索
         const projects = await helper.findProjectsByName('仕事');
@@ -1043,23 +1053,52 @@ test.describe('MCPテスター画面 - Todoistタスク操作', () => {
         const workProjectId = workProject.id;
         
         // タスクを「仕事」プロジェクトに移動
+        console.log(`[DEBUG] タスクを仕事プロジェクトに移動: ${createdTaskId} → ${workProjectId}`);
         const moveToProjectResult = await helper.updateTodoistTask(
-          createdTaskId!, 
+          createdTaskId, 
           undefined, 
-          undefined, 
+          undefined,
           workProjectId
         );
-        const moveToProjectAnalysis = helper.analyzeToolResult(moveToProjectResult);
+        
+        // 移動結果を実際の状態検証付きで解析
+        const moveToProjectAnalysis = await helper.analyzeToolResultWithVerification(
+          moveToProjectResult,
+          {
+            taskId: createdTaskId,
+            expectedProjectId: workProjectId,
+            operationType: 'move'
+          }
+        );
+        
+        console.log(`[DEBUG] 仕事プロジェクトへの移動結果: ${moveToProjectAnalysis.message}`);
+        if (moveToProjectAnalysis.verificationDetails?.location) {
+          console.log(`[DEBUG] 位置検証詳細: ${moveToProjectAnalysis.verificationDetails.location.message}`);
+        }
+        
+        // 実際の状態変更が確認されることを期待
         expect(moveToProjectAnalysis.isSuccess).toBe(true);
         
         // タスクをインボックスに戻す
+        console.log(`[DEBUG] タスクをインボックスに戻す: ${createdTaskId}`);
         const moveToInboxResult = await helper.updateTodoistTask(
-          createdTaskId!, 
+          createdTaskId, 
           undefined, 
-          undefined, 
+          undefined,
           'inbox'
         );
-        const moveToInboxAnalysis = helper.analyzeToolResult(moveToInboxResult);
+        
+        // インボックス移動結果を実際の状態検証付きで解析
+        const moveToInboxAnalysis = await helper.analyzeToolResultWithVerification(
+          moveToInboxResult,
+          {
+            taskId: createdTaskId,
+            expectedProjectId: 'inbox',
+            operationType: 'move'
+          }
+        );
+        
+        console.log(`[DEBUG] インボックスへの移動結果: ${moveToInboxAnalysis.message}`);
         expect(moveToInboxAnalysis.isSuccess).toBe(true);
         
       } finally {
@@ -1091,17 +1130,40 @@ test.describe('MCPテスター画面 - Todoistタスク操作', () => {
         expect(testProjectId).toBeTruthy();
         
         // インボックスにタスクを作成
-        createdTaskId = await helper.createTodoistTaskAndGetId('プロジェクト間移動テスト用タスク');
+        const taskContent = `プロジェクト間移動テスト用タスク - ${timestamp}`;
+        createdTaskId = await helper.createTodoistTaskAndGetId(taskContent);
         expect(createdTaskId).toBeTruthy();
         
+        if (!createdTaskId) {
+          console.log('[DEBUG] タスク作成に失敗、移動テストをスキップ');
+          return;
+        }
+        
+        // 初期位置確認（インボックス）
+        const initialLocationVerification = await helper.verifyTaskLocation(createdTaskId, 'inbox');
+        expect(initialLocationVerification.success).toBe(true);
+        console.log(`[DEBUG] 初期位置確認: ${initialLocationVerification.message}`);
+        
         // タスクをテストプロジェクトに移動
+        console.log(`[DEBUG] タスクをテストプロジェクトに移動: ${createdTaskId} → ${testProjectId}`);
         const moveToTestProjectResult = await helper.updateTodoistTask(
-          createdTaskId!, 
+          createdTaskId, 
           undefined, 
-          undefined, 
-          testProjectId!
+          undefined,
+          testProjectId || undefined
         );
-        const moveToTestAnalysis = helper.analyzeToolResult(moveToTestProjectResult);
+        
+        // 移動結果を実際の状態検証付きで解析
+        const moveToTestAnalysis = await helper.analyzeToolResultWithVerification(
+          moveToTestProjectResult,
+          {
+            taskId: createdTaskId,
+            expectedProjectId: testProjectId || undefined,
+            operationType: 'move'
+          }
+        );
+        
+        console.log(`[DEBUG] テストプロジェクトへの移動結果: ${moveToTestAnalysis.message}`);
         expect(moveToTestAnalysis.isSuccess).toBe(true);
         
         // 「仕事」プロジェクトを検索
@@ -1112,23 +1174,45 @@ test.describe('MCPテスター画面 - Todoistタスク操作', () => {
         const workProjectId = workProject.id;
         
         // タスクを「仕事」プロジェクトに移動
+        console.log(`[DEBUG] タスクを仕事プロジェクトに移動: ${createdTaskId} → ${workProjectId}`);
         const moveToWorkResult = await helper.updateTodoistTask(
-          createdTaskId!, 
+          createdTaskId, 
           undefined, 
-          undefined, 
-          workProjectId
+          undefined,
+          workProjectId || undefined
         );
-        const moveToWorkAnalysis = helper.analyzeToolResult(moveToWorkResult);
+        
+        const moveToWorkAnalysis = await helper.analyzeToolResultWithVerification(
+          moveToWorkResult,
+          {
+            taskId: createdTaskId,
+            expectedProjectId: workProjectId,
+            operationType: 'move'
+          }
+        );
+        
+        console.log(`[DEBUG] 仕事プロジェクトへの移動結果: ${moveToWorkAnalysis.message}`);
         expect(moveToWorkAnalysis.isSuccess).toBe(true);
         
         // タスクをインボックスに戻す
+        console.log(`[DEBUG] タスクをインボックスに戻す: ${createdTaskId}`);
         const moveToInboxResult = await helper.updateTodoistTask(
-          createdTaskId!, 
+          createdTaskId, 
           undefined, 
-          undefined, 
+          undefined,
           'inbox'
         );
-        const moveToInboxAnalysis = helper.analyzeToolResult(moveToInboxResult);
+        
+        const moveToInboxAnalysis = await helper.analyzeToolResultWithVerification(
+          moveToInboxResult,
+          {
+            taskId: createdTaskId,
+            expectedProjectId: 'inbox',
+            operationType: 'move'
+          }
+        );
+        
+        console.log(`[DEBUG] インボックスへの移動結果: ${moveToInboxAnalysis.message}`);
         expect(moveToInboxAnalysis.isSuccess).toBe(true);
         
       } finally {
@@ -1146,6 +1230,89 @@ test.describe('MCPテスター画面 - Todoistタスク操作', () => {
             await helper.deleteTodoistProject(testProjectId);
           } catch (error) {
             console.log(`プロジェクト ${testProjectId} のクリーンアップに失敗: ${error}`);
+          }
+        }
+      }
+    });
+
+    test('todoist_move_task: 専用ツールによるタスク移動', async ({ page }) => {
+      const helper = new MCPTestHelper(page);
+      let createdTaskId: string | null = null;
+      
+      try {
+        await helper.navigateToTestPageAndVerify();
+        await helper.connectToMCPServer();
+        await helper.switchToToolsTabAndVerify();
+        
+        // インボックスにタスクを作成
+        const timestamp = Date.now();
+        const taskContent = `moveTodoistTask専用テスト - ${timestamp}`;
+        createdTaskId = await helper.createTodoistTaskAndGetId(taskContent, '2271673451'); // Inbox project ID
+        expect(createdTaskId).toBeTruthy();
+        
+        if (!createdTaskId) {
+          console.log('[DEBUG] タスク作成に失敗またはAPIトークン未設定、move_taskテストをスキップ');
+          return;
+        }
+        
+        // 作成直後のタスクがインボックスに存在することを確認
+        const initialLocationVerification = await helper.verifyTaskLocation(createdTaskId, 'inbox');
+        expect(initialLocationVerification.success).toBe(true);
+        console.log(`[DEBUG] 初期位置確認: ${initialLocationVerification.message}`);
+        
+        // 「仕事」プロジェクトを検索
+        const projects = await helper.findProjectsByName('仕事');
+        expect(projects.length).toBeGreaterThan(0);
+        const workProject = projects.find(p => p.name === '仕事 🎯');
+        expect(workProject).toBeTruthy();
+        const workProjectId = workProject!.id;
+        
+        // todoist_move_taskを使用してタスクを移動
+        console.log(`[DEBUG] todoist_move_taskでタスクを仕事プロジェクトに移動: ${createdTaskId} → ${workProjectId}`);
+        const moveToProjectResult = await helper.moveTodoistTask(createdTaskId, workProjectId);
+        
+        // 移動結果を実際の状態検証付きで解析
+        const moveToProjectAnalysis = await helper.analyzeToolResultWithVerification(
+          moveToProjectResult,
+          {
+            taskId: createdTaskId,
+            expectedProjectId: workProjectId,
+            operationType: 'move'
+          }
+        );
+        
+        console.log(`[DEBUG] todoist_move_taskによる移動結果: ${moveToProjectAnalysis.message}`);
+        if (moveToProjectAnalysis.verificationDetails?.location) {
+          console.log(`[DEBUG] 位置検証詳細: ${moveToProjectAnalysis.verificationDetails.location.message}`);
+        }
+        
+        // 実際の状態変更が確認されることを期待
+        expect(moveToProjectAnalysis.isSuccess).toBe(true);
+        
+        // タスクをインボックスに戻す（専用ツール使用）
+        console.log(`[DEBUG] todoist_move_taskでタスクをインボックスに戻す: ${createdTaskId}`);
+        const moveToInboxResult = await helper.moveTodoistTask(createdTaskId, '2271673451'); // Inbox project ID
+        
+        // インボックス移動結果を実際の状態検証付きで解析
+        const moveToInboxAnalysis = await helper.analyzeToolResultWithVerification(
+          moveToInboxResult,
+          {
+            taskId: createdTaskId,
+            expectedProjectId: 'inbox',
+            operationType: 'move'
+          }
+        );
+        
+        console.log(`[DEBUG] todoist_move_taskによるインボックス移動結果: ${moveToInboxAnalysis.message}`);
+        expect(moveToInboxAnalysis.isSuccess).toBe(true);
+        
+      } finally {
+        // クリーンアップ
+        if (createdTaskId) {
+          try {
+            await helper.closeTodoistTask(createdTaskId);
+          } catch (error) {
+            console.log(`タスク ${createdTaskId} のクリーンアップに失敗: ${error}`);
           }
         }
       }

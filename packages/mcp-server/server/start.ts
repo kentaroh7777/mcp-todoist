@@ -1,6 +1,11 @@
 import { MCPServer } from './index'
+import * as dotenv from 'dotenv'
+import * as path from 'path'
 
-const server = new MCPServer()
+// Load .env.local from project root
+dotenv.config({ path: path.join(__dirname, '../../../.env.local') })
+
+const server = new MCPServer(process.env.TODOIST_API_TOKEN)
 const PORT = process.env.MCP_SERVER_PORT || 4000
 
 server.getApp().listen(PORT, () => {

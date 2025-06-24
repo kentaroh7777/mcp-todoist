@@ -76,6 +76,7 @@ export class MCPProtocolHandler {
                     task_id: { type: 'string', description: 'Task ID' },
                     content: { type: 'string', description: 'Task content' },
                     description: { type: 'string', description: 'Task description' },
+                    project_id: { type: 'string', description: 'Project ID' },
                     priority: { type: 'number', description: 'Priority (1-4)', minimum: 1, maximum: 4 },
                     due_string: { type: 'string', description: 'Due date in natural language' },
                     labels: { type: 'array', items: { type: 'string' }, description: 'Task labels' }
@@ -139,6 +140,18 @@ export class MCPProtocolHandler {
                     project_id: { type: 'string', description: 'Project ID to delete' }
                   },
                   required: ['project_id']
+                }
+              },
+              {
+                name: 'todoist_move_task',
+                description: 'Move a task to a different project in Todoist',
+                inputSchema: {
+                  type: 'object',
+                  properties: {
+                    task_id: { type: 'string', description: 'Task ID to move' },
+                    project_id: { type: 'string', description: 'Target project ID' }
+                  },
+                  required: ['task_id', 'project_id']
                 }
               }
             ]
@@ -303,6 +316,48 @@ export class MCPProtocolHandler {
               {
                 type: 'text',
                 text: `Project ${args.project_id} deleted`
+              }
+            ]
+          })
+
+        case 'todoist_move_task':
+          // Get current task details first to preserve all fields
+          const currentTask = await this.todoistClient.getTask(args.task_id)
+          
+          // Create a new task in the target project with all the original task's details
+          const newTaskData: any = {
+            content: currentTask.content,
+            project_id: args.project_id
+          }
+
+          // Add optional fields if they exist
+          if (currentTask.description) {
+            newTaskData.description = currentTask.description
+          }
+          if (currentTask.priority !== 1) { // Only set priority if it's not default
+            newTaskData.priority = currentTask.priority
+          }
+          if (currentTask.labels && currentTask.labels.length > 0) {
+            newTaskData.labels = currentTask.labels
+          }
+          if (currentTask.due?.string) {
+            newTaskData.due_string = currentTask.due.string
+          }
+          if (currentTask.due?.date) {
+            newTaskData.due_date = currentTask.due.date
+          }
+
+          // Create the new task in the target project
+          const movedTask = await this.todoistClient.createTask(newTaskData)
+
+          // Delete the original task
+          await this.todoistClient.deleteTask(args.task_id)
+
+          return this.createResponse(requestId, {
+            content: [
+              {
+                type: 'text',
+                text: `Task "${currentTask.content}" moved from project ${currentTask.project_id} to project ${args.project_id} successfully. New task ID: ${movedTask.id}`
               }
             ]
           })

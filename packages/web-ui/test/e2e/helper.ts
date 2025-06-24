@@ -340,143 +340,130 @@ export class MCPTestHelper {
   }
 
   /**
-   * 指定されたMCPツールを実行する
+   * MCPツールを実行し、結果を取得する
    * @param toolName ツール名
-   * @param params パラメーター（JSON文字列、オプション）
-   * @returns 実行結果のテキスト
+   * @param params パラメーター（JSON文字列）
+   * @returns 実行結果文字列
    */
-  async executeMCPTool(toolName: string, params?: string): Promise<string> {
+  async executeMCPTool(toolName: string, params: string = '{}'): Promise<string> {
     console.log(`[HELPER] MCPツール実行開始: ${toolName}`);
     
-    // ツールセレクタでツールを選択
+    // ツール選択 - Ant DesignのSelectコンポーネント用
     const toolSelect = this.page.locator('[data-testid="tool-select"]');
     await expect(toolSelect).toBeVisible({ timeout: 10000 });
+    
+    // Selectのドロップダウンをクリック
     await toolSelect.click();
+    await this.page.waitForTimeout(500);
     
-    const toolOption = this.page.locator('.ant-select-item-option').filter({ hasText: toolName });
-    await expect(toolOption).toBeVisible({ timeout: 10000 });
-    await toolOption.click();
+    // ツール名でオプションを選択
+    const optionSelector = `.ant-select-dropdown .ant-select-item[title*="${toolName}"]`;
+    await this.page.locator(optionSelector).click();
+    await this.page.waitForTimeout(500);
     
-    // ツール選択後、パラメーターフォームが表示されるまで少し待機
+    // パラメーター設定
+    if (params && params !== '{}') {
+      const paramsObj = JSON.parse(params);
+      
+      for (const [key, value] of Object.entries(paramsObj)) {
+        console.log(`[HELPER] パラメーター設定: ${key} = ${value}`);
+        
+        // Ant DesignのForm.Item内の入力要素を特定（複数パターン対応）
+        const inputSelectors = [
+          `[data-testid="tool-params-form"] .ant-form-item:has(.ant-form-item-label:text("${key}")) input`,
+          `[data-testid="tool-params-form"] .ant-form-item:has(.ant-form-item-label:text("${key}")) textarea`,
+          `[data-testid="tool-params-form"] .ant-form-item:has(.ant-form-item-label:text("${key}")) .ant-select`,
+          `[data-testid="tool-params-form"] input[id*="${key}"]`,
+          `[data-testid="tool-params-form"] textarea[id*="${key}"]`
+        ];
+        
+        let inputSuccess = false;
+        for (const selector of inputSelectors) {
+          try {
+            const inputElement = this.page.locator(selector).first();
+            await expect(inputElement).toBeVisible({ timeout: 2000 });
+            
+            // Selectの場合は特別な処理
+            if (selector.includes('.ant-select')) {
+              await inputElement.click();
+              await this.page.waitForTimeout(300);
+              const optionElement = this.page.locator(`.ant-select-dropdown .ant-select-item:has-text("${value}")`).first();
+              if (await optionElement.isVisible()) {
+                await optionElement.click();
+              } else {
+                // オプションが見つからない場合は入力形式で試行
+                const searchInput = this.page.locator('.ant-select-dropdown input').first();
+                if (await searchInput.isVisible()) {
+                  await searchInput.fill(String(value));
+                  await this.page.keyboard.press('Enter');
+                }
+              }
+            } else {
+              // 通常の入力フィールド
+              await inputElement.fill(String(value));
+            }
+            
+            console.log(`[HELPER] パラメーター ${key} の入力成功 (セレクタ: ${selector})`);
+            inputSuccess = true;
+            break;
+          } catch (selectorError) {
+            // このセレクタでは見つからない場合は次を試行
+            continue;
+          }
+        }
+        
+        if (!inputSuccess) {
+          console.log(`[HELPER] パラメーター ${key} の入力に失敗: 全セレクタで要素が見つかりませんでした`);
+          // 入力フィールドが見つからない場合もテストを継続
+        }
+      }
+    }
+    
+    // 実行ボタンをクリック
+    const executeButton = this.page.locator('[data-testid="execute-tool-button"]');
+    await expect(executeButton).toBeVisible({ timeout: 5000 });
+    await expect(executeButton).toBeEnabled({ timeout: 5000 });
+    
+    console.log(`[HELPER] 実行ボタンをクリックします: ${toolName}`);
+    await executeButton.click();
+    console.log(`[HELPER] 実行ボタンクリック完了: ${toolName}`);
+    
+    // クリック後の状態変化を少し待機
     await this.page.waitForTimeout(1000);
     
-    // パラメーターがある場合は入力
-    if (params) {
-      try {
-        // パラメーターをJSONとしてパース
-        const paramObj = JSON.parse(params);
-        
-        // パラメーター入力フィールドはフォーム内にあるので、フォーム内から検索
-        const paramsForm = this.page.locator('[data-testid="tool-params-form"]');
-        await expect(paramsForm).toBeVisible({ timeout: 10000 });
-        
-        // 各パラメーターを個別に入力
-        for (const [key, value] of Object.entries(paramObj)) {
-          console.log(`[HELPER] パラメーター設定: ${key} = ${value}`);
-          
-          // Ant Design Formのname属性を使用してフィールドを特定
-          // より具体的なセレクターを優先して使用
-          let field = paramsForm.locator(`input[id="${key}"]`);
-          if (await field.count() === 0) {
-            field = paramsForm.locator(`textarea[id="${key}"]`);
-          }
-          if (await field.count() === 0) {
-            field = paramsForm.locator(`input[placeholder*="${key}"]`);
-          }
-          
-          if (await field.count() > 0) {
-            await field.fill(String(value));
-          } else {
-            console.log(`[HELPER] パラメーターフィールド ${key} が見つかりません。代替手段を試行`);
-            // 最初の利用可能な入力フィールドを使用
-            const anyInput = paramsForm.locator('input, textarea').first();
-            if (await anyInput.count() > 0) {
-              await anyInput.fill(params); // 元のJSON文字列を使用
-              break;
-            }
-          }
-        }
-      } catch (error) {
-        console.log(`[HELPER] JSON解析に失敗。生の文字列として扱います: ${error}`);
-        
-        // JSONパース失敗時は、最初の利用可能な入力フィールドに直接入力
-        const paramsForm = this.page.locator('[data-testid="tool-params-form"]');
-        await expect(paramsForm).toBeVisible({ timeout: 10000 });
-        
-        const anyInput = paramsForm.locator('input, textarea').first();
-        await expect(anyInput).toBeVisible();
-        await anyInput.fill(params);
-      }
-    }
+    // 結果を待機（移動操作はより時間がかかる可能性があるため、タイムアウトを延長）
+    const maxWaitTime = toolName === 'todoist_move_task' ? 90 : 30;
     
-    // ツール実行
-    const executeButton = this.page.locator('[data-testid="execute-tool-button"]');
-    await expect(executeButton).toBeVisible();
-    await expect(executeButton).toBeEnabled();
+    console.log(`[HELPER] 結果表示を待機中: ${toolName} (最大 ${maxWaitTime}秒)`);
     
-    // 実行前に既存の結果エリアが存在するかチェック
-    const existingResultArea = this.page.locator('[data-testid="tool-result-display"]');
-    const hadResultBefore = await existingResultArea.count() > 0;
-    
-    await executeButton.click();
-    
-    // ツール実行後の完了を様々な方法で検出
-    let resultText = '';
-    let timeoutCount = 0;
-    const maxRetries = 30; // 30秒間試行
-    
-    while (timeoutCount < maxRetries) {
-      await this.page.waitForTimeout(1000);
-      timeoutCount++;
+    // 結果表示エリアが更新されるまで待機（より寛容な待機方法を試行）
+    try {
+      await expect(this.page.locator('[data-testid="tool-result-display"]')).toBeVisible({ timeout: maxWaitTime * 1000 });
+    } catch (waitError) {
+      console.log(`[HELPER] 結果表示エリアの待機に失敗: ${waitError}`);
       
-      // 結果表示エリアが現れるか確認
-      const resultArea = this.page.locator('[data-testid="tool-result-display"]');
-      const resultAreaExists = await resultArea.count() > 0;
-      
-      if (resultAreaExists) {
-        // 結果が表示されたら内容を取得
-        resultText = await resultArea.textContent() || '';
-        if (resultText.trim().length > 0) {
-          console.log(`[HELPER] MCPツール実行完了: ${toolName} - 結果取得済み`);
-          break;
-        }
-      }
-      
-      // ボタンが無効化されていない場合（実行完了の可能性）
-      const isButtonEnabled = await executeButton.isEnabled();
-      if (isButtonEnabled) {
-        console.log(`[HELPER] 実行ボタンが有効化されました - 完了の可能性: ${timeoutCount}秒経過`);
-        
-        // 結果エリアを最終確認
-        if (resultAreaExists) {
-          resultText = await resultArea.textContent() || '';
-          break;
-        }
-      }
-      
-      // エラーメッセージの確認
+      // エラーメッセージが表示されていないかチェック
       const errorAlert = this.page.locator('.ant-alert-error');
-      if (await errorAlert.count() > 0) {
-        resultText = await errorAlert.textContent() || '';
-        console.log(`[HELPER] エラーメッセージを検出: ${resultText}`);
-        break;
+      if (await errorAlert.isVisible()) {
+        const errorText = await errorAlert.textContent();
+        console.log(`[HELPER] エラーアラートが検出されました: ${errorText}`);
       }
       
-      console.log(`[HELPER] ツール実行を待機中... ${timeoutCount}/${maxRetries}秒`);
-    }
-    
-    if (timeoutCount >= maxRetries) {
-      console.log(`[HELPER] ツール実行がタイムアウトしました。現在のページ状態を返します。`);
-      // タイムアウト時は現在表示されている内容を返す
-      const resultArea = this.page.locator('[data-testid="tool-result-display"]');
-      if (await resultArea.count() > 0) {
-        resultText = await resultArea.textContent() || '';
-      } else {
-        resultText = 'ツール実行がタイムアウトしました';
+      // ローディング状態が続いているかチェック
+      const loadingElement = this.page.locator('[data-testid="execute-tool-button"][loading]');
+      if (await loadingElement.isVisible()) {
+        console.log(`[HELPER] 実行ボタンがローディング状態のままです`);
       }
+      
+      throw waitError;
     }
     
-    return resultText;
+    // 結果を取得
+    const resultElement = this.page.locator('[data-testid="tool-result-display"]');
+    const resultText = await resultElement.textContent();
+    
+    console.log(`[HELPER] MCPツール実行完了: ${toolName}`);
+    return resultText ?? '';
   }
 
   /**
@@ -486,8 +473,14 @@ export class MCPTestHelper {
   async getTodoistTasks(projectId?: string): Promise<string> {
     console.log('[HELPER] Todoistタスク取得を開始');
     
-    const params = projectId ? `{"project_id": "${projectId}"}` : undefined;
-    const result = await this.executeMCPTool('todoist_get_tasks', params);
+    let result: string;
+    if (projectId) {
+      const params = JSON.stringify({ project_id: projectId });
+      result = await this.executeMCPTool('todoist_get_tasks', params);
+    } else {
+      // プロジェクトIDが指定されていない場合はパラメータなしで実行
+      result = await this.executeMCPTool('todoist_get_tasks');
+    }
     
     console.log('[HELPER] Todoistタスク取得完了');
     return result;
@@ -742,6 +735,169 @@ export class MCPTestHelper {
     
     console.log('[DEBUG] 実行結果解析: 認識できないデータ形式');
     return { isSuccess: false, isAuthError: false, message: '認識できないレスポンス形式です' };
+  }
+
+  /**
+   * タスクの詳細情報を取得する
+   * @param taskId タスクID
+   * @returns タスクの詳細情報（取得に失敗した場合はnull）
+   */
+  async getTaskDetails(taskId: string): Promise<any | null> {
+    console.log(`[HELPER] タスク詳細取得開始: ${taskId}`);
+    
+    try {
+      // 全タスクを取得してIDでフィルタ
+      const allTasksResult = await this.getTodoistTasks();
+      const analysis = this.analyzeToolResult(allTasksResult);
+      
+      if (!analysis.isSuccess) {
+        console.log('[HELPER] タスク一覧取得に失敗');
+        return null;
+      }
+      
+      const extractedJson = this.extractJsonFromResponse(allTasksResult);
+      if (!extractedJson || !Array.isArray(extractedJson)) {
+        console.log('[HELPER] タスク一覧の解析に失敗');
+        return null;
+      }
+      
+      const task = extractedJson.find(t => t.id === taskId || t.id === parseInt(taskId));
+      if (task) {
+        console.log(`[HELPER] タスク詳細取得成功: ${task.content} (プロジェクト: ${task.project_id})`);
+        return task;
+      } else {
+        console.log(`[HELPER] タスクが見つかりません: ${taskId}`);
+        return null;
+      }
+      
+    } catch (error) {
+      console.log(`[HELPER] タスク詳細取得エラー: ${error}`);
+      return null;
+    }
+  }
+
+  /**
+   * タスクが指定されたプロジェクトに存在するかを検証する
+   * @param taskId タスクID
+   * @param expectedProjectId 期待されるプロジェクトID
+   * @returns 検証結果
+   */
+  async verifyTaskLocation(taskId: string, expectedProjectId: string): Promise<{ success: boolean; message: string; actualProjectId?: string }> {
+    console.log(`[HELPER] タスク位置検証開始: ${taskId} → プロジェクト ${expectedProjectId}`);
+    
+    const taskDetails = await this.getTaskDetails(taskId);
+    if (!taskDetails) {
+      return { success: false, message: 'タスクの詳細取得に失敗しました' };
+    }
+    
+    const actualProjectId = taskDetails.project_id?.toString();
+    const expected = expectedProjectId === 'inbox' ? null : expectedProjectId;
+    const actual = actualProjectId === null ? 'inbox' : actualProjectId;
+    const expectedDisplay = expected === null ? 'inbox' : expected;
+    
+    if (actual === expectedDisplay) {
+      console.log(`[HELPER] タスク位置検証成功: ${taskId} は ${expectedDisplay} に存在`);
+      return { success: true, message: `タスクは期待されるプロジェクト（${expectedDisplay}）に存在します`, actualProjectId: actual };
+    } else {
+      console.log(`[HELPER] タスク位置検証失敗: ${taskId} は ${actual} に存在（期待: ${expectedDisplay}）`);
+      return { success: false, message: `タスクは期待されるプロジェクト（${expectedDisplay}）ではなく、${actual}に存在します`, actualProjectId: actual };
+    }
+  }
+
+  /**
+   * タスクの内容が期待される値と一致するかを検証する
+   * @param taskId タスクID
+   * @param expectedContent 期待される内容
+   * @returns 検証結果
+   */
+  async verifyTaskContent(taskId: string, expectedContent: string): Promise<{ success: boolean; message: string; actualContent?: string }> {
+    console.log(`[HELPER] タスク内容検証開始: ${taskId} → "${expectedContent}"`);
+    
+    const taskDetails = await this.getTaskDetails(taskId);
+    if (!taskDetails) {
+      return { success: false, message: 'タスクの詳細取得に失敗しました' };
+    }
+    
+    const actualContent = taskDetails.content;
+    if (actualContent === expectedContent) {
+      console.log(`[HELPER] タスク内容検証成功: "${actualContent}"`);
+      return { success: true, message: 'タスクの内容が期待される値と一致します', actualContent };
+    } else {
+      console.log(`[HELPER] タスク内容検証失敗: "${actualContent}" (期待: "${expectedContent}")`);
+      return { success: false, message: `タスクの内容が期待される値と異なります（実際: "${actualContent}", 期待: "${expectedContent}"）`, actualContent };
+    }
+  }
+
+  /**
+   * 改善されたツール実行結果解析（実際の状態検証を含む）
+   * @param resultText APIレスポンステキスト
+   * @param expectedChanges 期待される変更内容（オプション）
+   * @returns 解析結果
+   */
+  async analyzeToolResultWithVerification(
+    resultText: string, 
+    expectedChanges?: {
+      taskId?: string;
+      expectedProjectId?: string;
+      expectedContent?: string;
+      operationType?: 'create' | 'update' | 'move' | 'close' | 'get';
+    }
+  ): Promise<{ isSuccess: boolean; isAuthError: boolean; message: string; verificationDetails?: any }> {
+    console.log('[HELPER] 実行結果の詳細解析を開始');
+    
+    // 基本的な実行結果解析
+    const basicAnalysis = this.analyzeToolResult(resultText);
+    
+    if (basicAnalysis.isAuthError) {
+      return {
+        ...basicAnalysis,
+        message: '認証エラー: APIトークンが設定されていません'
+      };
+    }
+    
+    if (!basicAnalysis.isSuccess) {
+      return basicAnalysis;
+    }
+    
+    let verificationDetails: any = {};
+    
+    // 期待される変更が指定されている場合は実際の状態を検証
+    if (expectedChanges?.taskId && (expectedChanges.operationType === 'move' || expectedChanges.operationType === 'update')) {
+      if (expectedChanges.expectedProjectId) {
+        console.log('[HELPER] タスクの位置検証を実行中...');
+        const locationVerification = await this.verifyTaskLocation(expectedChanges.taskId, expectedChanges.expectedProjectId);
+        verificationDetails.location = locationVerification;
+        
+        if (!locationVerification.success && expectedChanges.operationType === 'move') {
+          return {
+            ...basicAnalysis,
+            isSuccess: false,
+            message: `移動操作後の検証で問題を検出: ${locationVerification.message}`,
+            verificationDetails
+          };
+        }
+      }
+      
+      if (expectedChanges.expectedContent) {
+        console.log('[HELPER] タスクの内容検証を実行中...');
+        const contentVerification = await this.verifyTaskContent(expectedChanges.taskId, expectedChanges.expectedContent);
+        verificationDetails.content = contentVerification;
+        
+        if (!contentVerification.success) {
+          return {
+            ...basicAnalysis,
+            isSuccess: false,
+            message: `内容更新の検証で問題を検出: ${contentVerification.message}`,
+            verificationDetails
+          };
+        }
+      }
+    }
+    
+    return {
+      ...basicAnalysis,
+      verificationDetails: Object.keys(verificationDetails).length > 0 ? verificationDetails : undefined
+    };
   }
 
   /**
@@ -1108,6 +1264,126 @@ export class MCPTestHelper {
     } catch (parseError) {
       console.log(`[HELPER] プロジェクト検索中にエラー: ${parseError}`);
       return [];
+    }
+  }
+
+  /**
+   * タスクを別のプロジェクトに移動する
+   * @param taskId 移動するタスクのID
+   * @param targetProjectId 移動先のプロジェクトID
+   * @returns 移動結果のレスポンス文字列
+   */
+  async moveTodoistTask(taskId: string, targetProjectId: string): Promise<string> {
+    console.log(`[HELPER] タスクを移動: ${taskId} → プロジェクト ${targetProjectId}`);
+    
+    const params = JSON.stringify({
+      task_id: taskId,
+      project_id: targetProjectId
+    });
+    
+    const result = await this.executeMCPTool('todoist_move_task', params);
+    console.log('[HELPER] タスク移動完了');
+    return result;
+  }
+
+  /**
+   * 移動操作の結果から新しいタスクIDを抽出する
+   * @param moveResult 移動操作の実行結果
+   * @returns 新しいタスクID（抽出できない場合はnull）
+   */
+  extractNewTaskIdFromMoveResult(moveResult: string): string | null {
+    try {
+      // "New task ID: XXXXXXXX" のパターンを検索
+      const taskIdMatch = moveResult.match(/New task ID:\s*(\d+)/);
+      if (taskIdMatch && taskIdMatch[1]) {
+        return taskIdMatch[1];
+      }
+      
+      console.log('[HELPER] 新しいタスクIDの抽出に失敗');
+      return null;
+    } catch (error) {
+      console.log(`[HELPER] タスクID抽出でエラー: ${error}`);
+      return null;
+    }
+  }
+
+  /**
+   * 移動操作の改善された解析機能（検証付き）
+   * @param moveResult 移動操作の実行結果
+   * @param originalTaskId 元のタスクID
+   * @param targetProjectId 移動先プロジェクトID
+   * @returns 移動操作の解析結果
+   */
+  async analyzeMoveResultWithVerification(
+    moveResult: string, 
+    originalTaskId: string, 
+    targetProjectId: string
+  ): Promise<{
+    isSuccess: boolean;
+    isAuthError: boolean;
+    message: string;
+    newTaskId?: string;
+    verificationDetails?: {
+      location?: {
+        success: boolean;
+        message: string;
+        actualProjectId?: string;
+      };
+    };
+  }> {
+    console.log('[HELPER] 改善されたツール実行結果解析開始');
+    
+    // 基本的な結果解析
+    const basicAnalysis = await this.analyzeToolResult(moveResult);
+    
+    if (basicAnalysis.isAuthError) {
+      return {
+        ...basicAnalysis,
+        message: '認証エラー: APIトークンが設定されていません'
+      };
+    }
+    
+    if (!basicAnalysis.isSuccess) {
+      return {
+        ...basicAnalysis,
+        message: `移動操作が失敗しました: ${basicAnalysis.message}`
+      };
+    }
+    
+    // 新しいタスクIDを抽出
+    const newTaskId = this.extractNewTaskIdFromMoveResult(moveResult);
+    
+    if (!newTaskId) {
+      return {
+        ...basicAnalysis,
+        isSuccess: false,
+        message: '移動操作は成功したようですが、新しいタスクIDを取得できませんでした'
+      };
+    }
+    
+    // 新しいタスクの位置を検証
+    console.log(`[HELPER] 新しいタスク ${newTaskId} の位置検証を実行中...`);
+    const locationVerification = await this.verifyTaskLocation(newTaskId, targetProjectId);
+    
+    if (locationVerification.success) {
+      return {
+        ...basicAnalysis,
+        newTaskId,
+        message: `タスク移動が成功しました。新しいタスクID: ${newTaskId}`,
+        verificationDetails: {
+          location: locationVerification
+        }
+      };
+    } else {
+      return {
+        ...basicAnalysis,
+        newTaskId,
+        isSuccess: false,
+        message: `移動操作は完了しましたが、期待されたプロジェクトに新しいタスクが見つかりません: ${locationVerification.message}`,
+        verificationDetails: {
+          location: locationVerification
+        }
+      };
     }
   }
 } 
