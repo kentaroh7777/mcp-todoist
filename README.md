@@ -45,6 +45,17 @@ Todoist API互換のMCPサーバー実装
   - [x] `todoist_create_project` - プロジェクト作成
   - [x] `todoist_update_project` - プロジェクト更新
   - [x] `todoist_delete_project` - プロジェクト削除
+- [x] ツール可視性制御システム
+
+### ツール可視性設定
+
+セキュリティと用途に応じて、各ツールの公開・非公開を設定できます。
+
+**現在の設定:**
+- **公開ツール**: `todoist_get_tasks`, `todoist_create_task`, `todoist_update_task`, `todoist_close_task`, `todoist_get_projects`, `todoist_move_task`
+- **非公開ツール**: `todoist_create_project`, `todoist_update_project`, `todoist_delete_project`
+
+> 📖 **詳細**: ツールの可視性設定の詳細については [TOOL_VISIBILITY.md](./TOOL_VISIBILITY.md) を参照してください。
 
 ## クイックスタート
 

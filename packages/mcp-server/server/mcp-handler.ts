@@ -1,6 +1,34 @@
 import { MCPRequest, MCPResponse, MCPError, InitializeResult, ValidationResult } from '../types/mcp'
 import { TodoistClient } from '../src/adapters/todoist-client'
 
+/**
+ * ツールの公開・非公開設定
+ * 
+ * 使い方:
+ * - true: ツールを公開（利用可能）
+ * - false: ツールを非公開（利用不可）
+ * 
+ * 設定変更後は、MCPサーバーを再起動してください。
+ * 
+ * 現在の設定:
+ * - todoist_create_project: 非公開
+ * - todoist_update_project: 非公開  
+ * - todoist_delete_project: 非公開
+ */
+const TOOL_VISIBILITY = {
+  todoist_get_tasks: true,
+  todoist_create_task: true,
+  todoist_update_task: true,
+  todoist_close_task: true,
+  todoist_get_projects: true,
+  todoist_create_project: false,  // 非公開
+  todoist_update_project: false,  // 非公開
+  todoist_delete_project: false,  // 非公開
+  todoist_move_task: true,
+} as const
+
+type ToolName = keyof typeof TOOL_VISIBILITY
+
 export class MCPProtocolHandler {
   private todoistClient: TodoistClient | null = null;
 
@@ -8,6 +36,137 @@ export class MCPProtocolHandler {
     if (todoistApiToken) {
       this.todoistClient = new TodoistClient(todoistApiToken);
     }
+  }
+
+  // ツールが公開されているかチェック
+  private isToolVisible(toolName: string): boolean {
+    return TOOL_VISIBILITY[toolName as ToolName] ?? false
+  }
+
+  // 全ツール定義を取得
+  private getAllTools() {
+    return [
+      {
+        name: 'todoist_get_tasks',
+        description: 'Get tasks from Todoist',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            project_id: { type: 'string', description: 'Project ID to filter tasks' },
+            filter: { type: 'string', description: 'Filter expression' },
+            limit: { type: 'number', description: 'Maximum number of tasks to return' }
+          }
+        }
+      },
+      {
+        name: 'todoist_create_task',
+        description: 'Create a new task in Todoist',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            content: { type: 'string', description: 'Task content' },
+            description: { type: 'string', description: 'Task description' },
+            project_id: { type: 'string', description: 'Project ID' },
+            priority: { type: 'number', description: 'Priority (1-4)', minimum: 1, maximum: 4 },
+            due_string: { type: 'string', description: 'Due date in natural language' },
+            labels: { type: 'array', items: { type: 'string' }, description: 'Task labels' }
+          },
+          required: ['content']
+        }
+      },
+      {
+        name: 'todoist_update_task',
+        description: 'Update an existing task in Todoist',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            task_id: { type: 'string', description: 'Task ID' },
+            content: { type: 'string', description: 'Task content' },
+            description: { type: 'string', description: 'Task description' },
+            project_id: { type: 'string', description: 'Project ID' },
+            priority: { type: 'number', description: 'Priority (1-4)', minimum: 1, maximum: 4 },
+            due_string: { type: 'string', description: 'Due date in natural language' },
+            labels: { type: 'array', items: { type: 'string' }, description: 'Task labels' }
+          },
+          required: ['task_id']
+        }
+      },
+      {
+        name: 'todoist_close_task',
+        description: 'Mark a task as completed in Todoist',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            task_id: { type: 'string', description: 'Task ID to complete' }
+          },
+          required: ['task_id']
+        }
+      },
+      {
+        name: 'todoist_get_projects',
+        description: 'Get projects from Todoist',
+        inputSchema: {
+          type: 'object',
+          properties: {}
+        }
+      },
+      {
+        name: 'todoist_create_project',
+        description: 'Create a new project in Todoist',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', description: 'Project name' },
+            color: { type: 'string', description: 'Project color' },
+            parent_id: { type: 'string', description: 'Parent project ID' },
+            is_favorite: { type: 'boolean', description: 'Whether the project is a favorite' }
+          },
+          required: ['name']
+        }
+      },
+      {
+        name: 'todoist_update_project',
+        description: 'Update an existing project in Todoist',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            project_id: { type: 'string', description: 'Project ID' },
+            name: { type: 'string', description: 'Project name' },
+            color: { type: 'string', description: 'Project color' },
+            is_favorite: { type: 'boolean', description: 'Whether the project is a favorite' }
+          },
+          required: ['project_id']
+        }
+      },
+      {
+        name: 'todoist_delete_project',
+        description: 'Delete a project in Todoist',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            project_id: { type: 'string', description: 'Project ID to delete' }
+          },
+          required: ['project_id']
+        }
+      },
+      {
+        name: 'todoist_move_task',
+        description: 'Move a task to a different project in Todoist',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            task_id: { type: 'string', description: 'Task ID to move' },
+            project_id: { type: 'string', description: 'Target project ID' }
+          },
+          required: ['task_id', 'project_id']
+        }
+      }
+    ]
+  }
+
+  // 公開ツールのみ取得
+  private getVisibleTools() {
+    return this.getAllTools().filter(tool => this.isToolVisible(tool.name))
   }
 
   async handleRequest(request: any): Promise<MCPResponse> {
@@ -38,123 +197,7 @@ export class MCPProtocolHandler {
 
         case 'tools/list':
           return this.createResponse(mcpRequest.id, {
-            tools: [
-              {
-                name: 'todoist_get_tasks',
-                description: 'Get tasks from Todoist',
-                inputSchema: {
-                  type: 'object',
-                  properties: {
-                    project_id: { type: 'string', description: 'Project ID to filter tasks' },
-                    filter: { type: 'string', description: 'Filter expression' },
-                    limit: { type: 'number', description: 'Maximum number of tasks to return' }
-                  }
-                }
-              },
-              {
-                name: 'todoist_create_task',
-                description: 'Create a new task in Todoist',
-                inputSchema: {
-                  type: 'object',
-                  properties: {
-                    content: { type: 'string', description: 'Task content' },
-                    description: { type: 'string', description: 'Task description' },
-                    project_id: { type: 'string', description: 'Project ID' },
-                    priority: { type: 'number', description: 'Priority (1-4)', minimum: 1, maximum: 4 },
-                    due_string: { type: 'string', description: 'Due date in natural language' },
-                    labels: { type: 'array', items: { type: 'string' }, description: 'Task labels' }
-                  },
-                  required: ['content']
-                }
-              },
-              {
-                name: 'todoist_update_task',
-                description: 'Update an existing task in Todoist',
-                inputSchema: {
-                  type: 'object',
-                  properties: {
-                    task_id: { type: 'string', description: 'Task ID' },
-                    content: { type: 'string', description: 'Task content' },
-                    description: { type: 'string', description: 'Task description' },
-                    project_id: { type: 'string', description: 'Project ID' },
-                    priority: { type: 'number', description: 'Priority (1-4)', minimum: 1, maximum: 4 },
-                    due_string: { type: 'string', description: 'Due date in natural language' },
-                    labels: { type: 'array', items: { type: 'string' }, description: 'Task labels' }
-                  },
-                  required: ['task_id']
-                }
-              },
-              {
-                name: 'todoist_close_task',
-                description: 'Mark a task as completed in Todoist',
-                inputSchema: {
-                  type: 'object',
-                  properties: {
-                    task_id: { type: 'string', description: 'Task ID to complete' }
-                  },
-                  required: ['task_id']
-                }
-              },
-              {
-                name: 'todoist_get_projects',
-                description: 'Get projects from Todoist',
-                inputSchema: {
-                  type: 'object',
-                  properties: {}
-                }
-              },
-              {
-                name: 'todoist_create_project',
-                description: 'Create a new project in Todoist',
-                inputSchema: {
-                  type: 'object',
-                  properties: {
-                    name: { type: 'string', description: 'Project name' },
-                    color: { type: 'string', description: 'Project color' },
-                    parent_id: { type: 'string', description: 'Parent project ID' },
-                    is_favorite: { type: 'boolean', description: 'Whether the project is a favorite' }
-                  },
-                  required: ['name']
-                }
-              },
-              {
-                name: 'todoist_update_project',
-                description: 'Update an existing project in Todoist',
-                inputSchema: {
-                  type: 'object',
-                  properties: {
-                    project_id: { type: 'string', description: 'Project ID' },
-                    name: { type: 'string', description: 'Project name' },
-                    color: { type: 'string', description: 'Project color' },
-                    is_favorite: { type: 'boolean', description: 'Whether the project is a favorite' }
-                  },
-                  required: ['project_id']
-                }
-              },
-              {
-                name: 'todoist_delete_project',
-                description: 'Delete a project in Todoist',
-                inputSchema: {
-                  type: 'object',
-                  properties: {
-                    project_id: { type: 'string', description: 'Project ID to delete' }
-                  },
-                  required: ['project_id']
-                }
-              },
-              {
-                name: 'todoist_move_task',
-                description: 'Move a task to a different project in Todoist',
-                inputSchema: {
-                  type: 'object',
-                  properties: {
-                    task_id: { type: 'string', description: 'Task ID to move' },
-                    project_id: { type: 'string', description: 'Target project ID' }
-                  },
-                  required: ['task_id', 'project_id']
-                }
-              }
-            ]
+            tools: this.getVisibleTools()
           })
 
         case 'tools/call':
@@ -223,6 +266,15 @@ export class MCPProtocolHandler {
   }
 
   private async handleToolCall(toolName: string, args: any, requestId: any): Promise<MCPResponse> {
+    // 可視性チェックを最初に実行
+    if (!this.isToolVisible(toolName)) {
+      return this.createErrorResponse(requestId, {
+        code: -32603,
+        message: 'Tool not found'
+      })
+    }
+
+    // Todoistクライアントの初期化チェック
     if (!this.todoistClient) {
       return this.createErrorResponse(requestId, {
         code: -32603,
@@ -231,6 +283,7 @@ export class MCPProtocolHandler {
     }
 
     try {
+
       switch (toolName) {
         case 'todoist_get_tasks':
           const tasks = await this.todoistClient.getTasks(args)

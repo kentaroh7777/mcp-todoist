@@ -186,6 +186,103 @@ describe('MCPProtocolHandler', () => {
     })
   })
 
+  describe('tool visibility', () => {
+    it('should return only visible tools in tools/list', async () => {
+      const request = {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/list',
+        params: {}
+      }
+
+      const response = await handler.handleRequest(request)
+
+      expect(response.result.tools).toEqual(expect.arrayContaining([
+        expect.objectContaining({ name: 'todoist_get_tasks' }),
+        expect.objectContaining({ name: 'todoist_create_task' }),
+        expect.objectContaining({ name: 'todoist_update_task' }),
+        expect.objectContaining({ name: 'todoist_close_task' }),
+        expect.objectContaining({ name: 'todoist_get_projects' }),
+        expect.objectContaining({ name: 'todoist_move_task' })
+      ]))
+
+      // 非公開ツールが含まれていないことを確認
+      const toolNames = response.result.tools.map((tool: any) => tool.name)
+      expect(toolNames).not.toContain('todoist_create_project')
+      expect(toolNames).not.toContain('todoist_update_project')
+      expect(toolNames).not.toContain('todoist_delete_project')
+    })
+
+    it('should reject calls to hidden tools', async () => {
+      const request = {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: {
+          name: 'todoist_create_project',
+          arguments: { name: 'test project' }
+        }
+      }
+
+      const response = await handler.handleRequest(request)
+
+      expect(response).toEqual({
+        jsonrpc: '2.0',
+        id: 1,
+        error: {
+          code: -32603,
+          message: 'Tool not found'
+        }
+      })
+    })
+
+    it('should reject calls to todoist_update_project', async () => {
+      const request = {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: {
+          name: 'todoist_update_project',
+          arguments: { project_id: '123', name: 'updated name' }
+        }
+      }
+
+      const response = await handler.handleRequest(request)
+
+      expect(response).toEqual({
+        jsonrpc: '2.0',
+        id: 1,
+        error: {
+          code: -32603,
+          message: 'Tool not found'
+        }
+      })
+    })
+
+    it('should reject calls to todoist_delete_project', async () => {
+      const request = {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: {
+          name: 'todoist_delete_project',
+          arguments: { project_id: '123' }
+        }
+      }
+
+      const response = await handler.handleRequest(request)
+
+      expect(response).toEqual({
+        jsonrpc: '2.0',
+        id: 1,
+        error: {
+          code: -32603,
+          message: 'Tool not found'
+        }
+      })
+    })
+  })
+
   describe('createResponse', () => {
     it('should create correct response format', () => {
       const result = { test: 'data' }
